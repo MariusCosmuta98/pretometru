@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 import { cspPlugin } from './config/csp.ts';
+import { ocrAssetsPlugin } from './config/ocr-assets.ts';
 
 // GitHub Pages serves the project site under /<repo>/. Override with BASE_PATH if the repo is renamed.
 const base = `/${(process.env.BASE_PATH ?? '/pretometru/').replace(/^\/+|\/+$/g, '')}/`;
@@ -17,6 +18,7 @@ export default defineConfig(({ mode }) => ({
           react(),
           tailwindcss(),
           cspPlugin(),
+          ocrAssetsPlugin(),
           VitePWA({
             registerType: 'prompt',
             injectRegister: false,
@@ -44,6 +46,8 @@ export default defineConfig(({ mode }) => ({
             },
             workbox: {
               globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+              // The OCR engine (about 16 MB) is cached on demand by `pwa-offline-share`, not precached.
+              globIgnores: ['ocr/**'],
               navigateFallback: 'index.html',
               cleanupOutdatedCaches: true,
             },
