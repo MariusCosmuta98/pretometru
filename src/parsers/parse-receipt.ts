@@ -1,6 +1,6 @@
 import type { ParsedReceipt, ParseWarning, ReceiptParser, ReceiptSource } from '@/domain';
 import { parsers, rankParsers } from './registry';
-import { engineForSource } from './source';
+import { emptyReceipt } from './source';
 import { validateReceipt } from './validate';
 
 export interface ParseReceiptOptions {
@@ -25,18 +25,7 @@ function attempt(parser: ReceiptParser, source: ReceiptSource): Attempt {
   }
 }
 
-/** What a document that no parser recognised turns into: nothing extracted, all warnings on. */
-function unrecognized(source: ReceiptSource): ParsedReceipt {
-  return {
-    schemaVersion: 1,
-    chain: 'unknown',
-    docType: 'receipt',
-    currency: 'RON',
-    totals: { grandTotalBani: 0 },
-    lines: [],
-    meta: { engine: engineForSource(source), parser: 'none', parserVersion: '0.0.0', warnings: [] },
-  };
-}
+const NO_PARSER = { id: 'none', version: '0.0.0' };
 
 const warningKey = (warning: ParseWarning) => `${warning.code}:${warning.lineIdx ?? ''}`;
 
@@ -79,7 +68,7 @@ export function parseReceiptWith(
       message: `Parserul „${parser.id}” a eșuat: ${result.reason}`,
     });
   }
-  return finish(unrecognized(source), notes, opts);
+  return finish(emptyReceipt(source, NO_PARSER), notes, opts);
 }
 
 /**
