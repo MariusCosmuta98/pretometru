@@ -52,6 +52,9 @@ const UI_AND_STORAGE = [
   '**/ui/*',
 ];
 
+// Logic modules (catalog, analytics) may use storage but stay React-free.
+const REACT_AND_UI = UI_AND_STORAGE.filter((pattern) => !/dexie|storage/.test(pattern));
+
 const restrictImports = (group, message) => ({
   'no-restricted-imports': ['error', { patterns: [{ group, message }] }],
 });
@@ -134,6 +137,14 @@ export default defineConfig([
         '**/ui/*',
       ],
       'src/storage must not depend on React or UI code.',
+    ),
+  },
+
+  {
+    files: ['src/catalog/**/*.ts', 'src/analytics/**/*.ts'],
+    rules: restrictImports(
+      REACT_AND_UI,
+      'Logic modules (catalog, analytics) must stay React-free and must not import features, app or ui code.',
     ),
   },
 ]);

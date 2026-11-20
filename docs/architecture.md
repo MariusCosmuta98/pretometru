@@ -17,6 +17,8 @@ it, what may import what, and how to add a screen without touching shared files*
 
 - `src/domain` and `src/parsers` are **pure**: no DOM, IndexedDB, network or clock (inject `now`). They run under
   Node/Vitest. ESLint enforces the import and global-variable bans (`eslint.config.js`).
+- `src/catalog` and `src/analytics` are React-free: ESLint rejects `react`, `react-router` and imports of `@/features`,
+  `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
 - Features share code only through `src/ui`, `src/domain`, `src/storage` or a logic module, never by reaching into a
   sibling feature.
 - Path alias: `@/` = `src/` (configured in `tsconfig*.json` and `vite.config.ts`).
@@ -40,7 +42,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/pwa/`                   | service worker registration, update prompt, offline/share-target     | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
 | `src/features/home`, `stats` | dashboard and statistics screens                                     | `insights-dashboard` (until then `price-analytics`) |
 | `src/features/add-receipt`, `receipts` | add receipt, receipt list, review (`bonuri/:receiptId`)    | `import-review-ui`                    |
-| `src/features/products`      | products by category, product page                                   | `catalog-matching`, `price-analytics` |
+| `src/features/products`      | products by category, product page (§5c)                             | `catalog-matching`, `price-analytics` |
 | `src/features/lists`         | shopping lists                                                       | `shopping-lists`                      |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
@@ -276,8 +278,36 @@ Rules (each is covered by a test):
   removes them from the comparison, the cheapest store and the trend, never from the history and chart.
 - **Only at X**: `onlyAt` is set when every purchase ever was at one store (no comparison, plan §7.6).
 - **Δ and trend**: `change = { from, to, deltaMilliBani, pct, direction }`; under 0,5 % is `flat`. Buying at another store in
-  between is not a price move.
+  between is not a price move. `cheapestVsLastPct` is the other reading of Δ: the best price in the window against the
+  last price paid (the products list shows both).
 - Money stays integer milli-bani; only the percentages are floats (ratios).
+- A standalone discount line (negative total) is not applied to the product above it: it counts towards the receipt total
+  only. Parsers fold a discount into its product line (`discountBani`) whenever the receipt prints it that way.
+
+## 5c. Product screens (`src/features/products`)
+
+Routes `/produse` (products by category: last price, cheapest store, Δ, search) and `/produse/:productId` (per-store
+comparison table, price chart, history, purchases that cannot be compared, merge and split). Everything is computed by
+`@/analytics` and changed through `@/catalog`; the screens only render and call them.
+
+- **Data**: `useLive.ts` (`useDb`, `useLiveQuery`, `useDbQuery`) runs a query as a Dexie `liveQuery`, so a screen follows
+  imports, merges and the two comparison settings. The querier **must be an `async` function**: Dexie loses track of the
+  tables a query reads across native `await`s otherwise, and the query silently never re-runs. `queries.ts` shapes the
+  data (`loadOverview`, `loadProductPage`). An unavailable IndexedDB shows a message; the shell keeps working.
+- **Settings**: the period (30 to 365 days, default 90) and "Fără prețuri la reducere" are the portable settings
+  `priceWindowDays` and `excludeDiscountedPrices`, edited inline by `PriceFilters` on both screens.
+- **Chart**: [uPlot](https://github.com/leeoniya/uPlot) (about 22 kB gzipped, canvas) in `PriceChart.tsx`, loaded with
+  `React.lazy` only when a product with two purchases is opened; its stylesheet ships as a lazy CSS chunk. Nothing is
+  fetched from a CDN, the chunk is precached (the product page and chart were checked offline in the built app), and uPlot
+  only touches styles through the CSSOM, which the `style-src 'self'` policy allows. Days are plotted at 00:00 UTC.
+- **Merge / split**: `MergePanel` folds the page's product into another; `SplitPanel` moves the ticked purchases to a new
+  or an existing product. Both end on the product that received the data.
+- **Prices**: shown per base unit (`1,30 lei/rolă`), with the shelf price of the pack where the unit price alone is hard
+  to picture (`0,0583 lei/buc (6,99 lei / 120 buc)`).
+- **Tests**: jsdom with `fake-indexeddb/auto` (the screens use the shared `getDb()`), `testing.ts` seeds the plan §7.7 toilet
+  paper, only `Date` is faked (`vi.useFakeTimers({ toFake: ['Date'] })`, IndexedDB needs real timers) and the chart module
+  is mocked because jsdom has no canvas. `tests/price-comparison.test.ts` is the §7.7 acceptance test and
+  `tests/catalog-analytics-fixtures.test.ts` runs the catalog and analytics over every fixture.
 
 ## 6. Build, PWA and CSP
 
