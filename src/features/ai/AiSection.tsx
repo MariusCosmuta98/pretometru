@@ -270,12 +270,17 @@ function KeyPanel({ config }: { config: AiConfig }) {
 function EnableSwitch({ config }: { config: AiConfig }) {
   const id = useId();
   const [error, setError] = useState<string>();
+  // What was just chosen shows at once; it is dropped when the stored state has caught up with it.
+  const [pending, setPending] = useState<boolean>();
+  if (pending !== undefined && pending === config.enabled) setPending(undefined);
 
   async function toggle(enabled: boolean) {
     setError(undefined);
+    setPending(enabled);
     try {
       await setAiEnabled(await getAiServices().getDb(), enabled);
     } catch (failure) {
+      setPending(undefined);
       setError(describeAiError(failure));
     }
   }
@@ -288,7 +293,7 @@ function EnableSwitch({ config }: { config: AiConfig }) {
           type="checkbox"
           role="switch"
           className="size-5 accent-teal-700"
-          checked={config.enabled}
+          checked={pending ?? config.enabled}
           disabled={!config.hasKey}
           aria-describedby={`${id}-hint`}
           onChange={(event) => {
