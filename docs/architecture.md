@@ -11,14 +11,16 @@ it, what may import what, and how to add a screen without touching shared files*
 | Domain     | `src/domain`                | `zod`                                   | React, Dexie, storage, parsers, features, app, ui |
 | Parsers    | `src/parsers`               | domain                                  | React, Dexie, storage, features, app, ui         |
 | Storage    | `src/storage`               | domain, Dexie                           | React, features, app, ui                         |
-| Logic      | `catalog`, `analytics`, `import`, `lists`, `sync`, `ai`, `ocr` | domain, parsers, storage, each other (no cycles) | features, app, ui (keep them React-free)        |
+| Logic      | `catalog`, `analytics`, `import`, `lists`, `sync`, `admin`, `ai`, `ocr` | domain, parsers, storage, each other (no cycles) | features, app, ui (keep them React-free)        |
 | UI         | `src/features/<name>`       | everything above, `src/app`, `src/ui`   | **another feature's folder**                     |
 | Shell      | `src/app`                   | `src/ui`; discovers features by glob    | importing features directly                      |
 
 - `src/domain` and `src/parsers` are **pure**: no DOM, IndexedDB, network or clock (inject `now`). They run under
   Node/Vitest. ESLint enforces the import and global-variable bans (`eslint.config.js`).
-- `src/catalog`, `src/analytics`, `src/import`, `src/lists` and `src/sync` are React-free: ESLint rejects `react`,
-  `react-router` and imports of `@/features`, `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
+- `src/catalog`, `src/analytics`, `src/import`, `src/lists`, `src/sync` and `src/admin` are React-free: ESLint rejects
+  `react`, `react-router` and imports of `@/features`, `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
+  `src/admin` and `src/features/backup` additionally may not use `fetch`, `XMLHttpRequest`, `WebSocket` or
+  `EventSource`: backup, categories and stores never touch the network.
 - Features share code only through `src/ui`, `src/domain`, `src/storage` or a logic module, never by reaching into a
   sibling feature.
 - Path alias: `@/` = `src/` (configured in `tsconfig*.json` and `vite.config.ts`).
@@ -39,6 +41,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/analytics/`             | price observations, unit price, cheapest store, trends (§5b)         | `price-analytics`                     |
 | `src/lists/`                 | shopping lists: list and item storage, cheapest place per item, grouping by store (§5d) | `shopping-lists`                      |
 | `src/sync/`                  | GitHub sync: private data repo, one atomic commit per sync, last-write-wins + tombstones (§13) | `sync-github`                         |
+| `src/admin/`                 | backup export/import (file, preview, merge or replace), category and store management (§15) | `backup-categories-stores`            |
 | `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
 | `src/pwa/`                   | the service worker (`sw.ts`: shell precache, engine cache, Web Share Target), the update prompt, persistent storage, the page's side of the worker (§14) | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
 | `src/features/home`, `stats` | dashboard and statistics screens                                     | `insights-dashboard` (until then `price-analytics`) |
@@ -47,6 +50,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/features/lists`         | shopping lists: overview and list screens (§5d); "Adaugă pe listă" lives on the product page (`src/features/products/AddToList.tsx`) | `shopping-lists`                      |
 | `src/features/sync`          | Settings section: GitHub onboarding, token, "Sincronizează acum", status (§13) | `sync-github`                         |
 | `src/features/offline`       | Settings section "Offline și stocare": offline readiness, "Descarcă acum" for the engines, persistent storage (no routes, §14) | `pwa-offline-share`                   |
+| `src/features/backup`, `categories`, `stores` | Settings sections "Copie de siguranță", "Categorii" and "Magazine"; the routes `/setari/categorii` and `/setari/magazine` (§15) | `backup-categories-stores`            |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
 | `src/ui/`                    | shared presentational components and icons                           | shared (additive edits)               |

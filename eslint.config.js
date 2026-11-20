@@ -25,6 +25,12 @@ const BROWSER_ONLY_GLOBALS = [
   message: 'This layer must stay pure: no DOM, storage or network access.',
 }));
 
+// Backup, categories and stores work on this device and on files the user picked: never the network.
+const NETWORK_GLOBALS = ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource'].map((name) => ({
+  name,
+  message: 'Backup and admin code must not use the network: everything stays on the device.',
+}));
+
 const UI_AND_STORAGE = [
   'react',
   'react-dom',
@@ -52,7 +58,7 @@ const UI_AND_STORAGE = [
   '**/ui/*',
 ];
 
-// Logic modules (catalog, analytics, import, lists, sync) may use storage but stay React-free.
+// Logic modules (catalog, analytics, import, lists, sync, admin) may use storage but stay React-free.
 const REACT_AND_UI = UI_AND_STORAGE.filter((pattern) => !/dexie|storage/.test(pattern));
 
 const restrictImports = (group, message) => ({
@@ -160,10 +166,16 @@ export default defineConfig([
       'src/import/**/*.ts',
       'src/lists/**/*.ts',
       'src/sync/**/*.ts',
+      'src/admin/**/*.ts',
     ],
     rules: restrictImports(
       REACT_AND_UI,
-      'Logic modules (catalog, analytics, import, lists, sync) must stay React-free and must not import features, app or ui code.',
+      'Logic modules (catalog, analytics, import, lists, sync, admin) must stay React-free and must not import features, app or ui code.',
     ),
+  },
+
+  {
+    files: ['src/admin/**/*.ts', 'src/features/backup/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-globals': ['error', ...NETWORK_GLOBALS] },
   },
 ]);
