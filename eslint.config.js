@@ -57,7 +57,7 @@ const restrictImports = (group, message) => ({
 });
 
 export default defineConfig([
-  globalIgnores(['dist', 'dev-dist', 'coverage', 'node_modules', 'tests/fixtures']),
+  globalIgnores(['dist', 'dev-dist', 'coverage', 'node_modules']),
 
   {
     files: ['**/*.{ts,tsx}'],

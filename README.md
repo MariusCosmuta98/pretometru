@@ -38,7 +38,8 @@ Aplicația se servește sub `/pretometru/` (la fel ca pe GitHub Pages). Dacă re
 | `npm test`             | teste Vitest (o singură rulare); `npm run test:watch` pentru watch |
 | `npm run build`        | build de producție în `dist/` (include PWA și CSP)                |
 | `npm run preview`      | servește build-ul la <http://localhost:4173/pretometru/>          |
-| `npm run check`        | `lint` + `typecheck` + `test` + `build`, exact ce rulează CI      |
+| `npm run check:leaks`  | caută date personale și chei în fișierele urmărite de git (rulează și la fiecare commit) |
+| `npm run check`        | `check:leaks` + `lint` + `typecheck` + `test` + `build`, exact ce rulează CI |
 
 ## Publicare
 
@@ -49,4 +50,6 @@ e verde, publică `dist/` pe GitHub Pages. Fluxul de lucru este trunk-based: bra
 ## Confidențialitate
 
 Repo-ul este public: nu se comit bonuri reale, nume, adrese, numere de client, carduri sau chei. Bonurile originale
-rămân în afara repo-ului, în `~/.pretometru-private/samples/`.
+rămân în afara repo-ului, în `~/.pretometru-private/samples/`. Fixture-urile din `tests/fixtures/` sunt sanitizate
+(vezi [`tests/fixtures/README.md`](tests/fixtures/README.md)), iar un hook `pre-commit` (instalat de `npm install`)
+și CI-ul rulează `npm run check:leaks` ca să oprească scurgerile.

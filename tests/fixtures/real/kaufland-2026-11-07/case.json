@@ -1,0 +1,13 @@
+{
+  "description": "Kaufland receipt copy (PDF with a text layer): section headers, multi-quantity and weighed lines, deposit, carrier bag, packaging voucher and a 3-rate VAT table.",
+  "origin": "real",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Printed TOTAL is 208,79; the 20,00 packaging voucher is a payment-side deduction, so paidBani is 188,79.",
+    "Section headers (Alimente, Băuturi alcoolice, ...) become storeCategoryHint of the lines under them, including the deposit line.",
+    "unitPriceBani only where a unit price is printed (`3 * 5,19`); single-quantity and weighed lines print the line total only.",
+    "Sizes are glued to names (`ROSII DEPELATE425ML`, `VDR SMANTANA400G`); `OETKER ZAH.VAN8G*4` is a 4-pack of 8 g, so pack = 32 g.",
+    "The loyalty-card row and the card slip after the VAT table are masked (letters x, digits 0): a parser must ignore them.",
+    "documentNo is a fake of the printed receipt number; branch.code is the printed store number; till and cashier are masked."
+  ]
+}

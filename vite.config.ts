@@ -50,7 +50,10 @@ export default defineConfig(({ mode }) => ({
           }),
         ],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@fixtures': fileURLToPath(new URL('./tests/fixtures', import.meta.url)),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
   },
   test: {
     environment: 'node',

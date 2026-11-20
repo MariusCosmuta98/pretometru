@@ -46,8 +46,9 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
 | `src/ui/`                    | shared presentational components and icons                           | shared (additive edits)               |
 | `config/`                    | build-time helpers (CSP plugin); Node only, never bundled            | `scaffold-pwa`                        |
-| `scripts/`                   | Node scripts (fixture sanitizer, leak check)                         | `sample-fixtures`                     |
-| `tests/`                     | cross-cutting tests and `tests/fixtures/**`                          | shared                                |
+| `scripts/`                   | Node scripts: leak check (`check-leaks.ts`), fixture sanitizer       | `sample-fixtures`                     |
+| `tests/`                     | cross-cutting tests (`tests/fixtures.test.ts`)                       | shared                                |
+| `tests/fixtures/`            | sanitized real samples, synthetic cases, typed loader (see §7)       | `sample-fixtures` (others: read only) |
 | `public/`, `design/`         | static assets and icon sources                                       | `scaffold-pwa`                        |
 
 ## 3. App shell: adding a screen without editing shared files
@@ -263,6 +264,63 @@ aliases with them, so the next import of the same printed name follows the user'
 - Anything time-dependent takes an injectable `now` (the Lidl sample is dated in the future).
 - Run one file: `npx vitest run src/app/registry.test.ts`.
 
+### Fixtures (`tests/fixtures`)
+
+Ground truth for the parsers, the review UI and analytics. Other sessions **only read** this folder; the owner
+(`sample-fixtures`) changes it. Import through the typed loader, never from production code:
+
+```ts
+import { fixtures, getFixture, sourceOf, normalizeForGolden } from '@fixtures';
+
+const fx = getFixture('kaufland-2026-11-07');
+const { source, expected } = sourceOf(fx, 'pdf-text'); // typed: source.kind === 'pdf-text'
+expect(normalizeForGolden(parse(source))).toEqual(normalizeForGolden(expected));
+```
+
+```
+tests/fixtures/
+  index.ts                      typed loader (`@fixtures`), validates every file against the domain schemas
+  README.md                     provenance, how to add a case, privacy rules
+  real/<id>/                    sanitized real receipts: kaufland-2026-11-07, metro-invoice-2026-08-12, ...
+  synthetic/<id>/               hand-made edge cases (always labelled synthetic)
+    case.json                   { description, origin: 'real' | 'synthetic', now, notes? }
+    expected.json               ParsedReceipt ground truth (meta.engine 'fixture')
+    source.pdf-text.json        ReceiptSource kind 'pdf-text': pdf.js items { str, x, y, w, h }, whitespace items included
+    source.ocr-text.json        kind 'ocr-text': raw Tesseract output (text, lines with confidence + bbox)
+    source.pasted-text.json     kind 'pasted-text': clean text, as iOS Live Text / Google Lens would give it
+    expected.<kind>.json        optional: a different perfect answer for one source kind
+```
+
+| Export                          | Meaning                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------- |
+| `fixtures`                      | every case, real first then synthetic, each `{ id, group, description, notes, now, expected, sources[] }` |
+| `getFixture(id)`                | one case; throws and lists the available ids when unknown                                    |
+| `sourceOf(fixture, kind)`       | `{ kind, source, expected }` for that source kind (`expected` = `expected.<kind>.json` or the case's `expected.json`); throws when the case has none |
+| `normalizeForGolden(receipt)`   | drops what a golden comparison must ignore: `meta.engine/parser/parserVersion/confidence`, line `confidence/bbox/raw`, warning `message` and order. Warning codes and `lineIdx` still have to match |
+
+Conventions every case follows (checked by `tests/fixtures.test.ts`):
+
+- **Clock.** `case.json.now` is the injectable clock. The Lidl receipt is dated after it, so its ground truth carries
+  `FUTURE_DATE`. `expected.json` is what a perfect parser returns **at `now`**, warnings included: the ones that follow
+  from the receipt (`SUM_MISMATCH` beyond 5 bani, `LINE_ARITHMETIC` beyond 1 ban, `VAT_MISMATCH` beyond 5 bani per rate,
+  `FUTURE_DATE`, `MISSING_DATE`, `UNKNOWN_CHAIN`) must be present exactly when they apply.
+- **Money** is integer bani, VAT-inclusive. `lineTotalBani` is what was charged after the line discount;
+  `unitPriceBani` appears only when a unit price is printed (never for weighed or single-quantity lines).
+  Ex-VAT invoices (METRO) convert the printed ex-VAT discount with `round(discount * (1 + rate / 100))` and print no
+  `unitPriceBani`.
+- **Names** are exactly as printed (`rawName`), `pack` is what `parsePackSize(rawName)` returns, `ean` is kept as
+  printed (13 digits carry a valid check digit; a truncated one stays truncated), `storeCategoryHint` is the section
+  header printed above the line.
+- **Raw OCR keeps its mistakes.** `source.ocr-text.json` is real Tesseract output; `expected.json` is the truth, and
+  `case.json.notes` lists the known misreads. Score OCR parsers with the plan §10 metrics (total, % of lines, exact
+  price) unless the case has an `expected.ocr-text.json`.
+- **Sanitized, not edited.** Personal rows of real receipts (loyalty card, card slip, buyer block, phone and bank lines)
+  are masked in place: letters become `x`/`X`, digits `0`, so the document keeps its shape and a parser must skip
+  those rows. Document numbers are fakes (`12345`, `1234567890123456`). Do not "repair" masked rows.
+- Adding a case = adding a folder with `case.json`, `expected.json` and at least one `source.<kind>.json`; the loader
+  and `tests/fixtures.test.ts` pick it up. Contract changes update `docs/contracts.md`, the schemas and every affected
+  `expected*.json` in one commit.
+
 ## 8. Commands
 
 | Command                                            | What it does                                          |
@@ -273,10 +331,14 @@ aliases with them, so the next import of the same printed name follows the user'
 | `npm run typecheck`                                | `tsc -b` (app + node projects)                        |
 | `npm test`                                         | Vitest, single run                                    |
 | `npm run build` / `npm run preview`                | production build / serve it at <http://localhost:4173/pretometru/> |
-| `npm run check`                                    | lint + typecheck + test + build (the pre-push gate)   |
+| `npm run check:leaks`                              | leak scan of every tracked file (also the pre-commit hook and a CI step) |
+| `npm run check`                                    | leaks + lint + typecheck + test + build (the pre-push gate) |
 
 Git flow (trunk-based): branch, `git fetch && git rebase origin/main`, `npm run check`, `git push origin HEAD:main`.
-CI (`.github/workflows/ci.yml`) runs the same four steps and, on `main`, deploys `dist/` to GitHub Pages.
+CI (`.github/workflows/ci.yml`) runs the same steps and, on `main`, deploys `dist/` to GitHub Pages.
+`npm install` points `core.hooksPath` at `.githooks/`, whose pre-commit hook runs the leak scan on the staged files
+(generic rules for IBANs, card numbers, phones, e-mails, tokens and loyalty/client numbers, plus an optional private
+denylist in `~/.pretometru-private/denylist.txt`). It prints `file:line:column rule`, never the value.
 
 ## 9. Dependency notes
 

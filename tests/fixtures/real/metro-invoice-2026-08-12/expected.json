@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "chain": "metro",
+  "storeName": "METRO CASH & CARRY ROMANIA SRL",
+  "branch": { "city": "Cluj" },
+  "docType": "invoice",
+  "documentNo": "1234567890123456",
+  "purchasedAt": "2026-08-12T19:33",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 36341,
+    "paidBani": 36341,
+    "vat": [
+      { "rate": 11, "grossBani": 12368, "netBani": 11142, "vatBani": 1226 },
+      { "rate": 21, "grossBani": 23973, "netBani": 19812, "vatBani": 4161 }
+    ]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "120BUC ARO BABY SERVETELE UMED", "kind": "product", "ean": "5948792073282", "qty": 3, "qtyUnit": "buc", "discountBani": 301, "lineTotalBani": 1194, "vatRate": 21, "pack": { "qty": 120, "unit": "buc" } },
+    { "idx": 1, "rawName": "200ML NIVEA SUN LOT DUPA PLAJA", "kind": "product", "ean": "9005800326788", "qty": 2, "qtyUnit": "buc", "discountBani": 2318, "lineTotalBani": 3480, "vatRate": 21, "pack": { "qty": 200, "unit": "ml" } },
+    { "idx": 2, "rawName": "400ML NIVEA SUN LOT PRO FPS50+", "kind": "product", "ean": "4006000133805", "qty": 1, "qtyUnit": "buc", "discountBani": 2880, "lineTotalBani": 4320, "vatRate": 21, "pack": { "qty": 400, "unit": "ml" } },
+    { "idx": 3, "rawName": "50ML NIVEA ROLL-ON DEFEND", "kind": "product", "ean": "9005800390192", "qty": 6, "qtyUnit": "buc", "discountBani": 2998, "lineTotalBani": 5997, "vatRate": 21, "pack": { "qty": 50, "unit": "ml" } },
+    { "idx": 4, "rawName": "8 ROLE FL H IG ALBA 3STR", "kind": "product", "ean": "5948792078447", "qty": 3, "qtyUnit": "buc", "discountBani": 359, "lineTotalBani": 3126, "vatRate": 21, "pack": { "qty": 8, "unit": "role" } },
+    { "idx": 5, "rawName": "100M ROLA M.PROF 2STR", "kind": "product", "ean": "5948792049478", "qty": 2, "qtyUnit": "buc", "discountBani": 140, "lineTotalBani": 2658, "vatRate": 21, "pack": { "qty": 100, "unit": "m" } },
+    { "idx": 6, "rawName": "900G OLYMPUS IAURT GREC 2%", "kind": "product", "ean": "5941875903377", "qty": 2, "qtyUnit": "buc", "discountBani": 131, "lineTotalBani": 3128, "vatRate": 11, "pack": { "qty": 900, "unit": "g" } },
+    { "idx": 7, "rawName": "1L METRO CHEF ULEI MASLINE EXV", "kind": "product", "ean": "4337182270249", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 4099, "vatRate": 11, "pack": { "qty": 1, "unit": "l" } },
+    { "idx": 8, "rawName": "200G VIVA PERNITE CAPSUNI BUC", "kind": "product", "ean": "5941311001704", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 620, "vatRate": 21, "pack": { "qty": 200, "unit": "g" } },
+    { "idx": 9, "rawName": "750G MC TORTILLA CHIPS PICANT", "kind": "product", "ean": "4337182271932", "qty": 1, "qtyUnit": "buc", "discountBani": 84, "lineTotalBani": 1603, "vatRate": 11, "pack": { "qty": 750, "unit": "g" } },
+    { "idx": 10, "rawName": "200G NUTLINE SEM FLS PEST SARE", "kind": "product", "ean": "5941448003206", "qty": 3, "qtyUnit": "buc", "discountBani": 163, "lineTotalBani": 1935, "vatRate": 11, "pack": { "qty": 200, "unit": "g" } },
+    { "idx": 11, "rawName": "750G MC TORTILLA CHIPS BBQ", "kind": "product", "ean": "4337182137481", "qty": 1, "qtyUnit": "buc", "discountBani": 84, "lineTotalBani": 1603, "vatRate": 11, "pack": { "qty": 750, "unit": "g" } },
+    { "idx": 12, "rawName": "750ML DOMESTOS PIN", "kind": "product", "ean": "5996037079797", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1379, "vatRate": 21, "pack": { "qty": 750, "unit": "ml" } },
+    { "idx": 13, "rawName": "MS PALETA INOX PERF 36CM", "kind": "product", "ean": "4894665515100", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1200, "vatRate": 21 }
+  ],
+  "meta": { "engine": "fixture", "parser": "ground-truth", "parserVersion": "1.0.0", "warnings": [] }
+}

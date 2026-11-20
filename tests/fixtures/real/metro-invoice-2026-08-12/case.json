@@ -1,0 +1,12 @@
+{
+  "description": "METRO invoice (PDF with a text layer): ex-VAT price columns, per-line discounts, two VAT rates, sizes at the start of the description, online card payment.",
+  "origin": "real",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Prices and discounts are printed ex-VAT. Ground truth keeps lineTotalBani = the printed 'valoare cu TVA' after discount, and converts the ex-VAT discount with round(discount * (1 + rate / 100)); no unitPriceBani because the VAT-inclusive list price is not printed.",
+    "The 28 printed lines sum to 363,42 against a printed total of 363,41: within the 5 bani tolerance, so no SUM_MISMATCH. The 21% group is likewise 1 ban off its printed gross.",
+    "The description column starts with a size token (`120BUC`, `8 ROLE`, `100M`) split over several pdf items; `MS PALETA ...` has no size. 'Unit. vanz.' = 8 on the toilet-paper line means 8 rolls per sold pack (paid 1,30 lei per roll).",
+    "`200G VIVA PERNITE CAPSUNI BUC` ends with a stray BUC token in the description column; the packaging code is BU.",
+    "Seller phone and bank lines, the buyer block between the two separator lines and the legal footer are masked (letters x, digits 0); the invoice number is a fake of the printed one."
+  ]
+}

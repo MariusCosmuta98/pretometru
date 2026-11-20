@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "chain": "kaufland",
+  "branch": { "code": "4670" },
+  "docType": "receipt",
+  "documentNo": "12345",
+  "purchasedAt": "2026-11-07T18:31:47",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 20879,
+    "voucherBani": 2000,
+    "paidBani": 18879,
+    "vat": [
+      { "rate": 21, "grossBani": 9392, "netBani": 7762, "vatBani": 1630 },
+      { "rate": 11, "grossBani": 11437, "netBani": 10304, "vatBani": 1133 },
+      { "rate": 0, "grossBani": 50, "netBani": 50, "vatBani": 0 }
+    ]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "ROSII DEPELATE425ML", "kind": "product", "qty": 3, "qtyUnit": "buc", "unitPriceBani": 519, "lineTotalBani": 1557, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente", "pack": { "qty": 425, "unit": "ml" } },
+    { "idx": 1, "rawName": "MAXIM NAUT 400G", "kind": "product", "qty": 3, "qtyUnit": "buc", "unitPriceBani": 479, "lineTotalBani": 1437, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente", "pack": { "qty": 400, "unit": "g" } },
+    { "idx": 2, "rawName": "PACHET PRAF COPT", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 177, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente" },
+    { "idx": 3, "rawName": "OETKER ZAH.VAN8G*4", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 180, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente", "pack": { "qty": 32, "unit": "g" } },
+    { "idx": 4, "rawName": "TORTILLA GRAU 245G", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1035, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente", "pack": { "qty": 245, "unit": "g" } },
+    { "idx": 5, "rawName": "PURCARI VIN 0,75L", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 2799, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Băuturi alcoolice", "pack": { "qty": 0.75, "unit": "l" } },
+    { "idx": 6, "rawName": "GARANTIE AMBALAJ", "kind": "deposit", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 50, "vatRate": 0, "vatClass": "D", "storeCategoryHint": "Băuturi alcoolice" },
+    { "idx": 7, "rawName": "PULPE DEZOSATE TV", "kind": "product", "qty": 0.92, "qtyUnit": "kg", "lineTotalBani": 2299, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Carne/ Autoservire carne" },
+    { "idx": 8, "rawName": "UMERASE LEMN", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 999, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Casa mea" },
+    { "idx": 9, "rawName": "VDR BORS 1L", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 349, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Delicatese/Convenience/Marinade", "pack": { "qty": 1, "unit": "l" } },
+    { "idx": 10, "rawName": "KLC HARTIE IG 8ROLE", "kind": "product", "qty": 3, "qtyUnit": "buc", "unitPriceBani": 1159, "lineTotalBani": 3477, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Drogerie/Gospodărie/Hrană animale/Tabac", "pack": { "qty": 8, "unit": "role" } },
+    { "idx": 11, "rawName": "MERE GOLDEN DEL.", "kind": "product", "qty": 1.168, "qtyUnit": "kg", "lineTotalBani": 583, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Fructe / Legume / Plante" },
+    { "idx": 12, "rawName": "USTUROI", "kind": "product", "qty": 0.182, "qtyUnit": "kg", "lineTotalBani": 291, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Fructe / Legume / Plante" },
+    { "idx": 13, "rawName": "K-BIO BANANE", "kind": "product", "qty": 0.574, "qtyUnit": "kg", "lineTotalBani": 516, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Fructe / Legume / Plante" },
+    { "idx": 14, "rawName": "BUBUBEBE SERV 120BUC", "kind": "product", "qty": 3, "qtyUnit": "buc", "unitPriceBani": 699, "lineTotalBani": 2097, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Frumuseţe, Sănătate, Copii", "pack": { "qty": 120, "unit": "buc" } },
+    { "idx": 15, "rawName": "OUA ECOLOGICE6", "kind": "product", "qty": 2, "qtyUnit": "buc", "unitPriceBani": 1199, "lineTotalBani": 2398, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Mopro/Brânză/Ouă" },
+    { "idx": 16, "rawName": "VDR SMANTANA400G", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 615, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Mopro/Brânză/Ouă", "pack": { "qty": 400, "unit": "g" } },
+    { "idx": 17, "rawName": "PUNGA BIO", "kind": "bag", "qty": 2, "qtyUnit": "buc", "unitPriceBani": 10, "lineTotalBani": 20, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Nonfood - Altele" }
+  ],
+  "meta": { "engine": "fixture", "parser": "ground-truth", "parserVersion": "1.0.0", "warnings": [] }
+}
