@@ -221,6 +221,19 @@ unknown; compare prices only between lines that have the same `baseUnit`.
 - `lines.idx` keeps the printed order; deleting a line leaves a gap and new lines go last. A line's `productId`,
   `categoryId` and pack come from the catalog's suggestions or the user's choice; non-product lines never carry a product.
 
+**Written by the shopping lists** (`src/lists`, docs/architecture.md §5d):
+
+- A list item's `label` is the product's name at the moment it was added (the screens show the product's current name
+  while `productId` still resolves) or the text the user typed. `order` is a position in the list: a new item gets the
+  highest `order` + 1 and a move numbers the list 0, 1, 2... again. Two devices can leave equal or gappy numbers, so read
+  items sorted by `order`, then `id`.
+- `checkedAt` is written together with `checked: true` (it equals that write's `updatedAt`) and cleared when the item is
+  unchecked; `archivedAt` is set when a list is archived and cleared when it is restored.
+- `qty` and `unit` (`buc`, `kg`, `l`) are what the user will buy. A `buc` of a product priced per roll, kg or l means
+  one pack as the store sells it; no quantity means one, no unit the unit the price was paid in.
+- Deleting a list tombstones the list and its live items with the same instant, and the items of a deleted list are
+  never shown.
+
 **Deviations from plan §6**
 
 - `pricePerBaseBani` is stored as `pricePerBaseMilliBani` (integer milli-bani). Whole bani lose too much precision for
