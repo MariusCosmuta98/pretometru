@@ -18,7 +18,7 @@ import {
   type SelectorMatcherOptions,
   type waitForOptions,
 } from '@testing-library/react';
-import type { DBCore, DBCoreTable } from 'dexie';
+import Dexie, { type DBCore, type DBCoreTable, type Transaction } from 'dexie';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, expect } from 'vitest';
@@ -46,6 +46,18 @@ export const SECTION = 'Sincronizare GitHub';
  * Testing Library default, or on a global setting somebody else may change.
  */
 export const WAIT = { timeout: 15_000 };
+
+/**
+ * Two switches to hunt for a test that counts on speed; both are off unless set:
+ *   VITE_SYNC_TEST_LATENCY_MS=150     every request to the in-memory GitHub takes 150 ms longer
+ *   VITE_SYNC_TEST_READ_DELAY_MS=20   every read of the database takes 20 ms longer
+ * For example `VITE_SYNC_TEST_LATENCY_MS=150 npx vitest run src/features/sync`.
+ */
+const switchedOn = (name: 'VITE_SYNC_TEST_LATENCY_MS' | 'VITE_SYNC_TEST_READ_DELAY_MS'): number => {
+  const raw: unknown = import.meta.env[name];
+  const ms = typeof raw === 'string' ? Number(raw) : 0;
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+};
 
 type Queries = BoundFunctions<typeof queries>;
 
@@ -83,16 +95,19 @@ interface ReadDelay {
 /**
  * Lets the reads of `db` be slowed down on demand (a Dexie middleware, so the application code is
  * the real one): the stored state then reaches a screen late, as it can on a busy device. Writes
- * are not slowed, so a change is stored at once and only read back late.
+ * are not slowed, so a change is stored at once and only read back late; neither are the reads
+ * inside a transaction, which a delay would end early.
  */
 function slowable(db: PretometruDB, delay: ReadDelay): PretometruDB {
-  const later = <T,>(result: Promise<T>): Promise<T> =>
-    delay.ms <= 0
-      ? result
-      : result.then(async (value) => {
-          await new Promise((resolve) => setTimeout(resolve, delay.ms));
-          return value;
-        });
+  const later = <T,>(result: Promise<T>): Promise<T> => {
+    // A read inside a transaction of the code's own cannot wait: the transaction would end under it.
+    const current: Transaction | null = Dexie.currentTransaction;
+    if (delay.ms <= 0 || current?.explicit === true) return result;
+    return result.then(async (value) => {
+      await new Promise((resolve) => setTimeout(resolve, delay.ms));
+      return value;
+    });
+  };
 
   db.use({
     stack: 'dbcore',
@@ -134,13 +149,19 @@ export function syncHarness() {
     });
   }
 
+  /** A fresh in-memory GitHub, as slow as the switch says. */
+  async function newWorld(options?: Parameters<typeof makeWorld>[0]): Promise<MockGitHub> {
+    return (await makeWorld(options)).setLatency(switchedOn('VITE_SYNC_TEST_LATENCY_MS'));
+  }
+
   beforeEach(async () => {
     overrides = {};
     delay = { ms: 0 };
     db = slowable(testDb(), delay);
     await db.open();
     await ensureSeed(db);
-    github = await makeWorld();
+    delay.ms = switchedOn('VITE_SYNC_TEST_READ_DELAY_MS');
+    github = await newWorld();
     install();
   });
   afterEach(async () => {
@@ -179,7 +200,7 @@ export function syncHarness() {
     install,
     /** Starts the test over with a different world (a read-only token, a public repository). */
     async world(options: Parameters<typeof makeWorld>[0]) {
-      github = await makeWorld(options);
+      github = await newWorld(options);
       install();
     },
     /**

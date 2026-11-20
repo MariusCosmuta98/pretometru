@@ -106,6 +106,7 @@ export class MockGitHub {
   private readonly hooks: Array<Interception<() => void | Promise<void>>> = [];
   private offline = false;
   private disposed = false;
+  private latency = 0;
   private wake: () => void = () => undefined;
   // Settles when the test is over: a request held by a hook is let go then.
   private readonly disposal = new Promise<void>((resolve) => {
@@ -165,6 +166,12 @@ export class MockGitHub {
   /** The network is down: every request fails the way `fetch` does. */
   setOffline(value: boolean): this {
     this.offline = value;
+    return this;
+  }
+
+  /** Every request takes `ms` longer to reach the server (a slow connection); 0 ends it. */
+  setLatency(ms: number): this {
+    this.latency = ms;
     return this;
   }
 
@@ -254,6 +261,13 @@ export class MockGitHub {
 
   readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     if (this.offline || this.disposed) throw new TypeError('Failed to fetch');
+    if (this.latency > 0) {
+      await Promise.race([
+        new Promise((resolve) => setTimeout(resolve, this.latency)),
+        this.disposal,
+      ]);
+      if (this.disposed) throw new TypeError('Failed to fetch');
+    }
 
     const request = new Request(input, init);
     const url = new URL(request.url);
