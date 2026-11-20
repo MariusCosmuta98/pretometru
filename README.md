@@ -39,6 +39,7 @@ Aplicația se servește sub `/pretometru/` (la fel ca pe GitHub Pages). Dacă re
 | `npm run build`        | build de producție în `dist/` (include PWA și CSP)                |
 | `npm run preview`      | servește build-ul la <http://localhost:4173/pretometru/>          |
 | `npm run check:leaks`  | caută date personale și chei în fișierele urmărite de git (rulează și la fiecare commit) |
+| `npm run e2e`          | build + teste Playwright în Chromium mobil pe `dist/` (offline, distribuire, actualizare); nu face parte din `check`; prima dată: `npx playwright install chromium` |
 | `npm run check`        | `check:leaks` + `lint` + `typecheck` + `test` + `build`, exact ce rulează CI |
 
 ## Publicare

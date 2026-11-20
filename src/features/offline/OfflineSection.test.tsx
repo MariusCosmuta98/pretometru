@@ -202,7 +202,7 @@ describe('storage', () => {
   it('points at a copy outside the browser', async () => {
     setup();
     expect(await screen.findByText(/nu ține loc de o copie de siguranță/)).toBeTruthy();
-    expect(screen.getByText(/exportă datele sau sincronizează-le/)).toBeTruthy();
+    expect(screen.getByText(/„Sincronizare GitHub”/)).toBeTruthy();
   });
 });
 

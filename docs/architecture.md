@@ -40,16 +40,18 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/lists/`                 | shopping lists: list and item storage, cheapest place per item, grouping by store (§5d) | `shopping-lists`                      |
 | `src/sync/`                  | GitHub sync: private data repo, one atomic commit per sync, last-write-wins + tombstones (§13) | `sync-github`                         |
 | `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
-| `src/pwa/`                   | service worker registration, update prompt, offline/share-target     | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
+| `src/pwa/`                   | the service worker (`sw.ts`: shell precache, engine cache, Web Share Target), the update prompt, persistent storage, the page's side of the worker (§14) | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
 | `src/features/home`, `stats` | dashboard and statistics screens                                     | `insights-dashboard` (until then `price-analytics`) |
 | `src/features/add-receipt`, `receipts` | add receipt (files, camera, pasted text, manual), receipt list, review (`bonuri/:receiptId`, §12) | `import-review-ui`                    |
 | `src/features/products`      | products by category, product page (§5c)                             | `catalog-matching`, `price-analytics` |
 | `src/features/lists`         | shopping lists: overview and list screens (§5d); "Adaugă pe listă" lives on the product page (`src/features/products/AddToList.tsx`) | `shopping-lists`                      |
 | `src/features/sync`          | Settings section: GitHub onboarding, token, "Sincronizează acum", status (§13) | `sync-github`                         |
+| `src/features/offline`       | Settings section "Offline și stocare": offline readiness, "Descarcă acum" for the engines, persistent storage (no routes, §14) | `pwa-offline-share`                   |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
 | `src/ui/`                    | shared presentational components and icons                           | shared (additive edits)               |
-| `config/`                    | build-time helpers (CSP plugin); Node only, never bundled            | `scaffold-pwa`                        |
+| `config/`                    | build-time helpers (CSP plugin, OCR asset copy, the offline guard, §14); Node only, never bundled | `scaffold-pwa`; `ocr-assets*`: `ocr-pipeline`; `offline-guard*`: `pwa-offline-share` |
+| `e2e/`                       | Playwright browser checks of the production build (`npm run e2e`, §14); not part of `check` or CI yet | `pwa-offline-share` (base for `qa-hardening`) |
 | `scripts/`                   | Node scripts: leak check (`check-leaks.ts`), fixture sanitizer; the local OCR benchmark (`ocr-bench.ts`, §11) | `sample-fixtures`; `ocr-bench*` : `ocr-pipeline` |
 | `tests/`                     | cross-cutting tests (`tests/fixtures.test.ts`)                       | shared                                |
 | `tests/fixtures/`            | sanitized real samples, synthetic cases, typed loader (see §7)       | `sample-fixtures` (others: read only) |
@@ -411,10 +413,10 @@ with sale prices excluded. The screens have jsdom tests like the product screens
 
 - `vite.config.ts`: base `/pretometru/` (override with `BASE_PATH` if the repo is renamed). The `test` mode skips the
   PWA, CSP and Tailwind plugins.
-- PWA (`vite-plugin-pwa`, `generateSW`, `registerType: 'prompt'`): the app shell is precached
-  (`workbox.globPatterns`); `src/pwa/UpdatePrompt.tsx` asks before activating a new version so an update never
-  interrupts data entry. Large assets (WASM, traineddata) are added to the precache or `runtimeCaching` by
-  `pwa-offline-share`.
+- PWA (`vite-plugin-pwa`, `injectManifest`, `registerType: 'prompt'`): the service worker is `src/pwa/sw.ts` (its own
+  `tsconfig.sw.json`, WebWorker lib). It precaches the app shell and every route chunk, caches the heavy engines on first
+  use and answers the Web Share Target; `src/pwa/UpdatePrompt.tsx` asks before activating a new version so an update
+  never interrupts data entry. How it works, the build guard and how it was verified: §14.
 - CSP is a `<meta>` tag injected at **build time only** by `config/csp.ts` (the dev server needs inline scripts and
   websockets). Allowed remote origins are exactly those of plan §11: `api.github.com` and
   `generativelanguage.googleapis.com`. `config/csp.test.ts` fails if another origin or `unsafe-inline`/`unsafe-eval`
@@ -499,11 +501,12 @@ Conventions every case follows (checked by `tests/fixtures.test.ts`):
 | `npm run dev`                                      | dev server, <http://localhost:5173/pretometru/>       |
 | `npm run lint`                                     | ESLint (type-aware) + `prettier --check`              |
 | `npm run format`                                   | Prettier write (Markdown and `public/` are ignored)   |
-| `npm run typecheck`                                | `tsc -b` (app + node projects)                        |
+| `npm run typecheck`                                | `tsc -b` (app, node, service worker and e2e projects) |
 | `npm test`                                         | Vitest, single run                                    |
 | `npm run build` / `npm run preview`                | production build / serve it at <http://localhost:4173/pretometru/> |
 | `npm run check:leaks`                              | leak scan of every tracked file (also the pre-commit hook and a CI step) |
 | `npm run ocr:bench`                                | local OCR benchmark on the private originals (not part of `check` or CI, §11) |
+| `npm run e2e`                                      | builds, then runs the Playwright specs of `e2e/` in a mobile Chromium against `dist/` (not part of `check` or CI, §14) |
 | `npm run check`                                    | leaks + lint + typecheck + test + build (the pre-push gate) |
 
 Git flow (trunk-based): branch, `git fetch && git rebase origin/main`, `npm run check`, `git push origin HEAD:main`.
@@ -598,8 +601,8 @@ worker is `pdfjs-dist/build/pdf.worker.min.mjs?url`: a build asset on the app's 
 in pdf.js order, empty strings dropped and whitespace-only items kept (their gap is information), exactly the shape of
 `tests/fixtures/**/source.pdf-text.json`. The call rejects for a file that is not a readable PDF (corrupt,
 password-protected); a scanned PDF resolves with pages that have no items, so the caller can fall back to OCR. The
-caller's buffer is copied first (pdf.js would take ownership of it). The worker is a `.mjs` asset, which the Workbox
-precache glob does not match: `pwa-offline-share` has to add it for PDF import to work offline.
+caller's buffer is copied first (pdf.js would take ownership of it). The worker is a `.mjs` asset: the service worker
+caches it the first time it is requested, or when "Descarcă acum" in Settings fetches every engine (§14).
 
 ## 11. OCR (`src/ocr`, import from `@/ocr`)
 
@@ -640,8 +643,9 @@ How it works:
   (`createWorker` always gets explicit paths, `cacheMethod: 'none'`). The existing CSP is enough
   (`worker-src 'self' blob:`, `script-src 'wasm-unsafe-eval'`); verified in headless Chrome against the production
   build: every request goes to the site's own origin and no policy violation is reported.
-- **Offline**: `ocr/**` is excluded from the Workbox precache (about 16 MB). `pwa-offline-share` should cache it at run
-  time (cache-first by URL); Tesseract.js's IndexedDB cache is off so the files are not stored twice.
+- **Offline**: `ocr/**` (about 16 MB) is not precached: the service worker stores each file the first time it is
+  requested (cache-first by URL), or all of them from Settings; Tesseract.js's IndexedDB cache is off so the files are
+  not stored twice (§14). Offline OCR was checked in headless Chrome with the network off.
 - Tests are Node-only: pure preprocessing/PNG/row merging, the worker host with a fake factory, and a real Vite build of
   `ocrAssetsPlugin` (`config/ocr-assets.test.ts`). The browser parts (canvas decode, crop) are covered by a manual check.
 - **Benchmark** (`npm run ocr:bench`, `scripts/ocr-bench.ts`; not part of `check` or CI): for each real fixture that has
@@ -756,3 +760,104 @@ Tests: `src/import/testing.ts` has fakes for the ports (`fakeEngines`, `fakePars
 `fakeCatalog`, `testServices`); `src/features/receipts/testing.tsx` renders the whole app router over an in-memory
 database with a fixture's ground truth as the parser's answer. The flows drive import, review, an edited price and the
 confirmation for the Kaufland, METRO, Lidl and Mega Image fixtures.
+
+## 14. Offline, persistence and sharing (`src/pwa`, `src/features/offline`, `e2e/`)
+
+After the first load the whole app works offline: the shell, every route chunk and the data (IndexedDB) need no network.
+The two heavy engines (the pdf.js worker and OCR) are the one exception, by design: they are stored the first time they are
+used, or all at once from Settings. Everything below was checked on the production build in headless Chrome with the
+network off (`npm run e2e`, see the end of this section).
+
+### The service worker (`src/pwa/sw.ts`)
+
+`vite-plugin-pwa` in `injectManifest` mode builds `sw.ts` on its own (Vite, `tsconfig.sw.json` with the WebWorker lib; the
+app's DOM project excludes it) and injects the manifest of **every file of the build** (`globPatterns: ['**/*']`). The worker
+splits it with `splitManifest` and the rules of `src/pwa/offline-rules.ts`:
+
+| Part | What the worker does |
+| --- | --- |
+| shell: everything that matches no engine rule | Workbox precache at install; a `NavigationRoute` answers every navigation with `index.html` (hash router); `cleanupOutdatedCaches` |
+| engines: `ENGINE_RULES` = `.mjs` (the pdf.js worker) and `ocr/**` (Tesseract.js worker, WASM cores, language data) | `engine-cache.ts`: cache-first by URL, fetched with `cache: 'reload'`, kept in **one cache per engine**, named `pretometru-engine-<id>-<fingerprint of its files and revisions>`; never part of the install step |
+| `POST <base>share-target` | `share-target.ts`, see "Web Share Target" |
+| messages | `SKIP_WAITING` (the update prompt); `pretometru/engines-status` and `pretometru/engines-prepare` (Settings, `sw-client.ts`) |
+| `activate` | `clientsClaim()`, deletes the engine caches of versions the manifest no longer lists, drops share batches older than a day |
+
+- **Versioned engine caches.** The OCR files have stable names (`ocr/worker.min.js`), so the cache name carries a fingerprint
+  of the files' URLs and revisions: an app update that leaves an engine alone keeps its 16 MB (checked in e2e), an engine
+  that changed starts a new cache and the old one is deleted on activate. A file that matches a rule but is not in the
+  manifest is stored on first use all the same.
+- **The update behaviour is unchanged** (`registerType: 'prompt'`): nothing skips the waiting phase but `SKIP_WAITING`.
+  `clientsClaim()` only matters for a first-time visitor, whose own tab would otherwise stay uncontrolled (and the engines
+  it uses in that first session unstored) until a reload; an update never reaches a tab before the user accepts it.
+- **An explicit "prepare offline import" is worth it, and small.** Settings, "Offline și stocare", shows for each engine
+  whether it is stored and downloads the rest with progress (about 18 MB). All three WASM cores are fetched, not only the one
+  this browser picked, so a browser update that enables another SIMD level cannot break offline OCR. The download runs in the
+  worker (`event.waitUntil`), keeps what it already has when it fails and resumes where it stopped. When an import fails
+  while the browser is offline, the add-receipt screen says that the engine is not on the device yet and points at that
+  card, instead of "try a clearer photo".
+
+### The build guard (`config/offline-guard.ts`)
+
+It runs on the final Workbox manifest (`manifestTransforms`), so `npm run build` fails, and says what to change, when
+(1) a precached file is over 1 MiB (an engine moved to a folder no rule knows, pdf.js changed its worker's extension, a new
+WASM file), (2) the precache outgrows 4 MiB, or (3) a file of the build output is missing from the manifest (too big for
+Workbox, or an extension the glob misses). It also records each engine file's size for Settings and warns about a rule that
+matches nothing. `src/pwa/offline-rules.test.ts` checks the URLs the OCR runtime requests (`ocrAssetUrls`,
+`src/ocr/assets.ts`) against the rules; `config/pwa-build.test.ts` builds the real config and checks the result (every file
+listed once and never with two revisions, the shell within budget, the engines apart with their sizes, `SKIP_WAITING`, the
+`share_target`). **A new engine**: add a rule to `ENGINE_RULES`, nothing else. The CSP is untouched.
+
+### Web Share Target
+
+The manifest declares `share_target` (POST, `multipart/form-data`, field `files`, `application/pdf` and `image/*`, action
+`<base>share-target`). On Android Chrome, with the app installed, it appears in the share sheet for PDFs and images; the
+browser POSTs the files, the worker answers without a server: it keeps them in the `pretometru-share-v1` cache and redirects
+(303) to `#/adauga?shared=<id>`. The add-receipt screen (`useSharedFiles`) reads the batch once (also under StrictMode),
+starts the import as if the files had been picked, discards the batch and removes the parameter; if the batch is gone it
+says so. Whatever goes wrong in the worker, the user lands on the add-receipt screen.
+
+**Android only.** iOS Safari and Firefox ignore `share_target`; there, and on desktop, the file picker, the camera input and
+pasted text are the import paths, and nothing breaks. Not verified: the real Android share sheet (headless Chrome cannot show
+one). The e2e specs check that Chrome reports no manifest errors and submit the same multipart POST from a page; the handler
+is unit-tested.
+
+### Persistent storage
+
+`persistence.ts`: `navigator.storage.persist()` is requested **once**, after the first confirmed receipt
+(`persistence-watcher.ts`, a Dexie `liveQuery` on confirmed receipts, mounted by `main.tsx` through `PersistenceWatcher`). The
+watcher loads three seconds after the first screen, and not at all once the browser has been asked, so the entry chunk stays
+free of Dexie. The ask is remembered in `localStorage` (`pretometru.storage-persist`: device-local, never exported or synced).
+The Settings card shows the state (active, inactive, unavailable), the space used, whether the app is installed and a
+**manual retry**, and points at the GitHub sync as the copy outside the browser (there is no export-to-file screen yet).
+Chrome decides by its own heuristics (an installed app is granted) and Firefox asks the user, so a refusal is normal and is
+never repeated on its own.
+
+### Camera capture
+
+The add-receipt screen already had it: `<input type="file" accept="image/*" capture="environment">`, labelled "Fotografiază
+bonul" (the rear camera on a phone, the file picker elsewhere). Checked in the built app; unchanged.
+
+### Browser checks (`e2e/`, `npm run e2e`)
+
+`playwright.config.ts` runs the specs in a mobile Chromium (Pixel 7 profile) against `dist/`, served by
+`e2e/support/pages-server.ts`: like GitHub Pages (files below the base only, no `index.html` fallback, no POST) but
+`no-store`, because with a fresh copy in the HTTP cache an offline check would pass even if the worker had not stored a file
+(a lazy chunk deleted from the precache is detected). Install the browser once with `npx playwright install chromium`, or set
+`E2E_CHANNEL=chrome` to use the installed Google Chrome (both pass). Not part of `npm run check` or CI; it is the base for the
+QA phase. Inputs are made on the fly from the fixtures (`e2e/support/samples.ts`: a text PDF with the Kaufland items, a canvas
+photo of the Lidl text; `seed.ts`: price history written into IndexedDB), so nothing binary is committed.
+
+| Spec | Proves |
+| --- | --- |
+| `offline.spec.ts` | the install stores the shell and not the engines; every navigation route, a receipt, a product with its chart and an unknown route render offline with IndexedDB data and no failed request or script error; a returning visit opens offline; the camera input |
+| `engines.spec.ts` | a PDF and a photo (OCR, then the Lidl parser) import offline after the first use of each engine, and after "Descarcă acum" with no earlier use; without either, the error names the cause |
+| `share-target.spec.ts` | the manifest has no Chrome errors; a share POST imports (also offline); several files are listed; an empty or expired share leaves the screen usable |
+| `update.spec.ts` | an update installs in the background, the page and a reload stay on the old version until "Actualizează", the engine caches survive, the new version works offline |
+| `persistence.spec.ts` | state and retry in Settings; the ask happens once after the first confirmed receipt and later visits do not even load the watcher |
+
+### Limits
+
+Not verifiable here: the Android share sheet, an installed PWA on iOS (Safari's storage rules), Chrome's real answer to
+`persist()` for an installed app, and the `.mjs` MIME type that GitHub Pages sends for the pdf.js worker (loaded the same way
+before; the worker stores the response as served). An update that changes an engine leaves the new engine unstored until it
+is next used online or fetched from Settings: the old caches are deleted when the new worker activates.
