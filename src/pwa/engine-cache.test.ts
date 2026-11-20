@@ -74,8 +74,8 @@ describe('handle (cache-first)', () => {
     await expect(handle('ocr/lang/ron.traineddata.gz')).rejects.toThrow('Failed to fetch');
     await settle();
 
-    const cache = await caches.open(engineCacheName('ocr', ENTRIES));
-    expect(await cache.keys()).toEqual([]);
+    // Nothing stored, and no empty cache left behind by the attempts.
+    expect(await caches.keys()).toEqual([]);
   });
 
   it('still answers when the copy cannot be stored (no space left)', async () => {

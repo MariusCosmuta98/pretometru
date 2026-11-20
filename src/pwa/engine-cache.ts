@@ -105,15 +105,24 @@ export function createEngineCache({ caches, fetch, scope, entries }: EngineCache
       const engine = path === undefined ? undefined : engineOf(path);
       if (!engine) return fetch(request.url);
 
-      const cache = await caches.open(nameOf(engine));
-      const stored = await cache.match(request.url);
-      if (stored) return stored;
+      const name = nameOf(engine);
+      // Looking must not create an empty cache for an engine that has nothing stored yet.
+      if (await caches.has(name)) {
+        const stored = await (await caches.open(name)).match(request.url);
+        if (stored) return stored;
+      }
       // The names are stable, so `reload` keeps a copy from before an engine update (the HTTP cache
       // may still hold it) from being stored under the new version.
       const response = await fetch(request.url, { cache: 'reload' });
       // A full response only; a failed copy (no space left) must not fail the page that asked.
       if (response.status === 200) {
-        waitUntil(cache.put(request.url, response.clone()).catch(() => undefined));
+        const copy = response.clone();
+        waitUntil(
+          caches
+            .open(name)
+            .then((cache) => cache.put(request.url, copy))
+            .catch(() => undefined),
+        );
       }
       return response;
     },

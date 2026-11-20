@@ -23,3 +23,16 @@ export const PHASE_LABELS: Record<ImportPhase, string> = {
   checking: 'Se verifică bonul',
   saving: 'Se salvează ciorna',
 };
+
+// Without a connection, a document that cannot be read almost always means that its engine (pdf.js,
+// OCR) was never stored on the device: the engines are fetched the first time they are used.
+const OFFLINE_ENGINE_MESSAGE =
+  'Nu ai internet, iar motorul de citire nu a fost descărcat încă pe acest dispozitiv. Conectează-te o dată la internet sau descarcă motoarele de citire din Setări, la „Offline și stocare”. Între timp poți lipi textul bonului sau îl poți introduce manual.';
+
+export function errorMessage(
+  code: ImportErrorCode | 'UNKNOWN' | undefined,
+  offline: boolean,
+): string {
+  const known = code ?? 'UNKNOWN';
+  return offline && known === 'EXTRACTION_FAILED' ? OFFLINE_ENGINE_MESSAGE : ERROR_MESSAGES[known];
+}

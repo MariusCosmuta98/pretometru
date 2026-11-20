@@ -9,7 +9,7 @@ import {
   labelClass,
   noticeClass,
 } from '@/ui/controls';
-import { ERROR_MESSAGES, PHASE_LABELS } from './messages';
+import { errorMessage, PHASE_LABELS } from './messages';
 import { useImportRunner, type ImportJob, type NamedInput } from './useImportRunner';
 
 interface FilePickerProps {
@@ -91,6 +91,8 @@ export function Component() {
   const runningIndex = runner.jobs.findIndex((job) => job.status === 'running');
   const runningJob = runner.jobs[runningIndex];
   const finished = !runner.running && runner.jobs.length > 0;
+  // Read when the results are drawn, which is right after a failure.
+  const offline = !navigator.onLine;
 
   // The results replace the progress panel: move focus there so the outcome is announced.
   useEffect(() => {
@@ -260,7 +262,7 @@ export function Component() {
                     className={job.status === 'cancelled' ? noticeClass.info : noticeClass.error}
                   >
                     <span className="font-medium">{job.label}:</span>{' '}
-                    {ERROR_MESSAGES[job.error ?? 'UNKNOWN']}
+                    {errorMessage(job.error, offline)}
                   </p>
                 )}
               </li>

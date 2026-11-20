@@ -143,6 +143,23 @@ describe('add receipt', () => {
     ).toBeTruthy();
   });
 
+  it('says that the engine is not on the device yet when a document cannot be read offline', async () => {
+    const failing = fakeEngines(
+      {},
+      { extractPdfText: () => Promise.reject(new Error('Failed to fetch the worker')) },
+    );
+    install({ engines: failing });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await renderAddScreen();
+
+    pick('Alege fișiere', [pdfFile('bon.pdf')]);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('motorul de citire nu a fost descărcat încă');
+    expect(alert.textContent).toContain('Offline și stocare');
+    expect(alert.textContent).not.toContain('poză mai clară');
+  });
+
   it('tells the user when nothing in the text looks like a receipt', async () => {
     install({ parse: fakeParser(sampleReceipt({ lines: [] })) });
     await renderAddScreen();

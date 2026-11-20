@@ -35,7 +35,9 @@ export interface PagesServerOptions {
 /**
  * Serves a build the way GitHub Pages does, which is stricter than `vite preview`: files below the
  * base only, no fallback to `index.html` for an unknown path (so a chunk that is missing from the
- * offline cache fails loudly instead of turning into HTML), `max-age=600`, and no POST at all.
+ * offline cache fails loudly instead of turning into HTML), and no POST at all. Responses are
+ * `no-store` (Pages says `max-age=600`) on purpose: with a fresh copy in the browser's HTTP cache an
+ * offline check would pass even if the service worker had not stored the file.
  */
 export function startPagesServer({
   root,
@@ -62,7 +64,7 @@ export function startPagesServer({
       response.writeHead(200, {
         'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
         'content-length': info.size,
-        'cache-control': 'max-age=600',
+        'cache-control': 'no-store',
       });
       if (request.method === 'HEAD') return void response.end();
       createReadStream(file).pipe(response);
