@@ -122,7 +122,11 @@ export interface FakeEngines extends EnginePort {
   calls: {
     extractPdfText: ArrayBuffer[];
     recognizeImage: Array<{ image: Blob; opts: RecognizeOptions | undefined }>;
-    cropRegion: Array<{ image: Blob; bbox: BoundingBox }>;
+    cropRegion: Array<{
+      image: Blob;
+      bbox: BoundingBox;
+      options: { padding?: number } | undefined;
+    }>;
   };
 }
 
@@ -149,8 +153,8 @@ export function fakeEngines(
       }),
     cropRegion:
       behaviour.cropRegion ??
-      ((image, bbox) => {
-        calls.cropRegion.push({ image, bbox });
+      ((image, bbox, options) => {
+        calls.cropRegion.push({ image, bbox, options });
         return Promise.resolve(new Blob(['crop'], { type: 'image/png' }));
       }),
   };

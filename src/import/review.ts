@@ -66,6 +66,11 @@ export interface Analysis {
   differenceBani: number;
   /** Receipt-level warnings first, then the lines' in printed order. */
   warnings: ParseWarning[];
+  /**
+   * The warnings (the very same objects) that come from the import and can be dismissed by
+   * verifying the line or the receipt; the others re-appear as long as the numbers disagree.
+   */
+  dismissible: ReadonlySet<ParseWarning>;
   /** Tokens of the warnings that need an acceptance right now. */
   ackTokens: Acks;
 }
@@ -95,6 +100,7 @@ export function analyze(draft: ReceiptDraft, context: ReviewContext): Analysis {
   }
 
   const lineById = new Map(draft.lines.map((line) => [line.idx, line]));
+  const dismissible = new Set<ParseWarning>();
   for (const warning of draft.extraction.warnings) {
     if (!CARRIED_CODES.has(warning.code) || has(warning.code, warning.lineIdx)) continue;
     if (warning.lineIdx === undefined) {
@@ -106,6 +112,7 @@ export function analyze(draft: ReceiptDraft, context: ReviewContext): Analysis {
       if (warning.code === 'LINE_ARITHMETIC' && line.unitPriceBani !== undefined) continue;
     }
     warnings.push(warning);
+    dismissible.add(warning);
   }
 
   warnings.sort((a, b) => {
@@ -126,7 +133,14 @@ export function analyze(draft: ReceiptDraft, context: ReviewContext): Analysis {
     }
   }
 
-  return { sumBani: sum, totalBani: draft.totalBani, differenceBani, warnings, ackTokens };
+  return {
+    sumBani: sum,
+    totalBani: draft.totalBani,
+    differenceBani,
+    warnings,
+    dismissible,
+    ackTokens,
+  };
 }
 
 /** Warnings that currently need an acceptance and have none. */
@@ -143,10 +157,34 @@ export type Blocker =
 
 const RECEIPT_FIELDS: readonly ReceiptField[] = ['date', 'time', 'total', 'paid'];
 
+function receiptFieldBlockers({ errors }: FormRead): Blocker[] {
+  return RECEIPT_FIELDS.flatMap((field): Blocker[] => {
+    const error = errors.receipt[field];
+    return error ? [{ kind: 'field', target: { scope: 'receipt', field }, error }] : [];
+  });
+}
+
+function lineFieldBlockers(form: ReceiptForm, { errors }: FormRead): Blocker[] {
+  return form.lines.flatMap((line) =>
+    (Object.entries(errors.lines[line.id] ?? {}) as Array<[LineField, FieldError]>).map(
+      ([field, error]): Blocker => ({
+        kind: 'field',
+        target: { scope: 'line', lineId: line.id, field },
+        error,
+      }),
+    ),
+  );
+}
+
+/** The fields whose text is not a valid value: all that stops a draft from being saved. */
+export function fieldErrorBlockers(form: ReceiptForm, read: FormRead): Blocker[] {
+  return [...receiptFieldBlockers(read), ...lineFieldBlockers(form, read)];
+}
+
 /**
  * Why a receipt cannot be confirmed yet, in the order the screen shows the fields: invalid or
  * missing values (a confirmed receipt needs a date and a total), no lines, and warnings the user
- * has not accepted. Saving a draft is only blocked by invalid values.
+ * has not accepted. Saving a draft is only blocked by invalid values (`fieldErrorBlockers`).
  */
 export function confirmBlockers(
   form: ReceiptForm,
@@ -154,13 +192,9 @@ export function confirmBlockers(
   analysis: Analysis,
   acks: Acks,
 ): Blocker[] {
-  const blockers: Blocker[] = [];
+  const blockers: Blocker[] = receiptFieldBlockers(read);
   const { errors, draft } = read;
 
-  for (const field of RECEIPT_FIELDS) {
-    const error = errors.receipt[field];
-    if (error) blockers.push({ kind: 'field', target: { scope: 'receipt', field }, error });
-  }
   if (draft.purchasedAt === undefined && errors.receipt.date === undefined) {
     blockers.push({
       kind: 'field',
@@ -176,14 +210,7 @@ export function confirmBlockers(
     });
   }
 
-  for (const line of form.lines) {
-    const lineErrors = errors.lines[line.id];
-    for (const [field, error] of Object.entries(lineErrors ?? {}) as Array<
-      [LineField, FieldError]
-    >) {
-      blockers.push({ kind: 'field', target: { scope: 'line', lineId: line.id, field }, error });
-    }
-  }
+  blockers.push(...lineFieldBlockers(form, read));
   if (form.lines.length === 0) blockers.push({ kind: 'no-lines' });
 
   for (const code of pendingAcks(analysis, acks)) blockers.push({ kind: 'ack', code });

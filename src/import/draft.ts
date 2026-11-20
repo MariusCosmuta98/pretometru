@@ -370,3 +370,8 @@ export function lineMetaOf(line: DraftLine): LineMeta {
     raw: line.raw,
   });
 }
+
+/** The draft with `warnings` as its stored extraction warnings (what the review left standing). */
+export function withWarnings(draft: ReceiptDraft, warnings: readonly ParseWarning[]): ReceiptDraft {
+  return { ...draft, extraction: { ...draft.extraction, warnings: [...warnings] } };
+}

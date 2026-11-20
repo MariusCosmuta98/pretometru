@@ -356,6 +356,21 @@ export function removeLine(form: ReceiptForm, id: string): ReceiptForm {
   return { ...form, lines: form.lines.filter((line) => line.id !== id) };
 }
 
+/** Unmaps lines whose product no longer exists (deleted or merged since the receipt was saved). */
+export function dropUnknownProducts(form: ReceiptForm, known: ReadonlySet<string>): ReceiptForm {
+  if (form.lines.every((line) => line.productId === undefined || known.has(line.productId))) {
+    return form;
+  }
+  return {
+    ...form,
+    lines: form.lines.map((line) => {
+      if (line.productId === undefined || known.has(line.productId)) return line;
+      const { productId: _gone, ...rest } = line;
+      return rest;
+    }),
+  };
+}
+
 /**
  * Fills the mapping of lines that have no product from the catalog's suggestions (`mappings[i]`
  * belongs to `form.lines[i]`): an alias or EAN match sets the product, its category and a

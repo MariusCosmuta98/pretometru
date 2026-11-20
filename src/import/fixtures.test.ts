@@ -2,7 +2,8 @@ import { getFixture, sourceOf } from '@fixtures';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ensureSeed, getReceiptWithLines } from '@/storage';
 import { createTestDb } from '@/storage/testing';
-import { importToDraft } from './pipeline';
+import { defaultParser } from './engines';
+import { importReceipt, importToDraft } from './pipeline';
 import { clearReviewSessions } from './session';
 import { fakeEngines, fakeParser, pdfFile, testServices } from './testing';
 
@@ -103,4 +104,33 @@ describe('ground-truth receipts', () => {
       pricePerBaseMilliBani: 130_250,
     });
   });
+});
+
+describe('the real parsers behind the import', () => {
+  it.each(['kaufland-2026-11-07', 'metro-invoice-2026-08-12'])(
+    'turn the %s PDF text into the ground-truth draft',
+    async (id) => {
+      const fixture = getFixture(id);
+      const { source, expected } = sourceOf(fixture, 'pdf-text');
+      const services = testServices(db, {
+        parser: defaultParser,
+        engines: fakeEngines({ pdf: source }),
+        now: () => new Date(fixture.now),
+      });
+
+      const { draft } = await importReceipt(services, {
+        kind: 'file',
+        file: pdfFile(`${id}.pdf`),
+      });
+
+      expect(draft.store.chain).toBe(expected.chain);
+      expect(draft.totalBani).toBe(expected.totals.grandTotalBani);
+      expect(draft.purchasedAt).toBe(expected.purchasedAt);
+      expect(draft.extraction.engine).toBe('pdfjs');
+      expect(draft.lines.map((line) => [line.rawName, line.kind, line.lineTotalBani])).toEqual(
+        expected.lines.map((line) => [line.rawName, line.kind, line.lineTotalBani]),
+      );
+      expect(draft.extraction.warnings).toEqual([]);
+    },
+  );
 });
