@@ -27,6 +27,8 @@ export function normalizeName(raw: string): string {
       .normalize('NFD')
       .replace(/\p{M}/gu, '')
       .toLowerCase()
+      // a U+0001 in the input must not pass for the decimal mark below
+      .replaceAll(DECIMAL_MARK, ' ')
       .replace(/(?<=\d)[.,](?=\d)/g, DECIMAL_MARK)
       .replace(new RegExp(`[^\\p{L}\\p{N}${DECIMAL_MARK}]+`, 'gu'), ' ')
       .replaceAll(DECIMAL_MARK, '.')

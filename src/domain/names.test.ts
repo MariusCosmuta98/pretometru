@@ -17,7 +17,7 @@ const printedNameArb = fc
     fc.oneof(
       { weight: 3, arbitrary: sizeArb },
       { weight: 2, arbitrary: fc.constantFrom('a', 'x', 'Ș', 'smantana', 'ZAH', 'IG') },
-      { weight: 1, arbitrary: fc.constantFrom(' ', '-', '*', '/', '.', ',', '%') },
+      { weight: 1, arbitrary: fc.constantFrom(' ', '-', '*', '/', '.', ',', '%', '\u0001') },
     ),
     { minLength: 1, maxLength: 6 },
   )
@@ -67,6 +67,11 @@ describe('normalizeName', () => {
       expect(normalizeName(raw)).toBe(raw);
     },
   );
+
+  it('reads a control character as punctuation, never as the decimal mark used internally', () => {
+    expect(normalizeName('A\u0001B')).toBe('a b');
+    expect(normalizeName('1\u00015')).toBe('1 5');
+  });
 
   it('is idempotent, so stored keys stay stable when re-normalised', () => {
     const alphabet = [...'aăâîșțĂÂÎȘȚşţ 0123456789,.%*xXgGrRlLkKmMbBuUcC-/+'];
