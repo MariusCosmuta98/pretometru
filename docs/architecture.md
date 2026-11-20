@@ -411,7 +411,10 @@ observations (quotes, estimates, plan). `src/lists/testing.ts` saves the ground-
 receipts through `saveReceipt` and `tests/shopping-lists.test.ts` is the acceptance test: toilet paper is cheapest at
 METRO (1,30 lei per roll, a sale price), wipes too (3,98 lei a pack), the chicken was only bought at Kaufland ("Doar la
 Kaufland", 500 g = 12,49 lei), coffee and bread have no store, METRO leaves the list with the default 90-day window and
-with sale prices excluded. The screens have jsdom tests like the product screens (§5c); the clock is the fixtures' 20.11.2026.
+with sale prices excluded. The screens have jsdom tests like the product screens (§5c); the clock is the fixtures' 20.11.2026. Focus assertions
+wait for the effect that moves focus (`expectFocus` in `src/features/lists/testing.ts`, §7), and the effects that move
+focus after an async step (the lists arriving, a live query re-render, a save) are layout effects, so they run in the
+commit that shows the result and cannot fire after the user has already moved on.
 
 ## 6. Build, PWA and CSP
 

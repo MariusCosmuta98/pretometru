@@ -17,6 +17,7 @@ import {
 } from '@/lists';
 import { FIXTURE_NOW, fixtureWorld, resetDb, type FixtureWorld } from '@/lists/testing';
 import { listActive, setSetting, type PretometruDB } from '@/storage';
+import { expectFocus } from './testing';
 
 function renderList(listId: string) {
   const router = createMemoryRouter(
@@ -265,18 +266,16 @@ describe('List screen: checking items', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Șterge bifatele (2)' }));
     const group = screen.getByRole('group', { name: /Ștergi/ });
     expect(group.textContent).toContain('Ștergi cele 2 articole bifate din listă?');
-    expect(document.activeElement).toBe(within(group).getByRole('button', { name: 'Anulează' }));
+    await expectFocus(() => within(group).getByRole('button', { name: 'Anulează' }));
     fireEvent.click(within(group).getByRole('button', { name: 'Anulează' }));
     expect(screen.queryByRole('group', { name: /Ștergi/ })).toBeNull();
-    expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Șterge bifatele (2)' }),
-    );
+    await expectFocus(() => screen.getByRole('button', { name: 'Șterge bifatele (2)' }));
     expect(await db.listItems.count()).toBe(5);
 
     fireEvent.click(screen.getByRole('button', { name: 'Debifează tot' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Debifează tot' })).toBeNull());
     expect(document.body.textContent).toContain('0 din 5 articole bifate');
-    expect(document.activeElement).toBe(screen.getByLabelText('Adaugă un articol'));
+    await expectFocus(() => screen.getByLabelText('Adaugă un articol'));
 
     await setItemChecked(db, items.bread.id, true);
     fireEvent.click(await screen.findByRole('button', { name: 'Șterge bifatele (1)' }));
@@ -305,7 +304,7 @@ describe('List screen: adding items', () => {
 
     await waitFor(() => expect(screen.getByText('Adăugat: Lămâie.')).toBeTruthy());
     expect(field.value).toBe('');
-    expect(document.activeElement).toBe(field);
+    await expectFocus(() => field);
     const added = (await listActive(db.listItems)).find((item) => item.productId === lemon.id);
     expect(added).toMatchObject({ listId, label: 'Lămâie', order: 5 });
     expect(await screen.findByRole('checkbox', { name: /^Lămâie/ })).toBeTruthy();
@@ -370,7 +369,7 @@ describe('List screen: adding items', () => {
     fireEvent.submit(field.closest('form')!);
 
     expect((await screen.findByRole('alert')).textContent).toBe('Scrie ce vrei să adaugi.');
-    expect(document.activeElement).toBe(field);
+    await expectFocus(() => field);
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(await db.listItems.count()).toBe(5);
   });
@@ -386,7 +385,7 @@ describe('List screen: editing an item', () => {
     fireEvent.click(edit);
     expect(edit.getAttribute('aria-expanded')).toBe('true');
     const form = screen.getByRole('form', { name: 'Editează Șervețele umede 120 buc' });
-    expect(document.activeElement).toBe(within(form).getByLabelText('Cantitate'));
+    await expectFocus(() => within(form).getByLabelText('Cantitate'));
 
     fireEvent.change(within(form).getByLabelText('Cantitate'), { target: { value: '3' } });
     fireEvent.change(within(form).getByLabelText('Unitate'), { target: { value: 'buc' } });
@@ -424,7 +423,7 @@ describe('List screen: editing an item', () => {
 
     expect((await within(form).findByRole('alert')).textContent).toContain('număr pozitiv');
     expect(qty.getAttribute('aria-invalid')).toBe('true');
-    expect(document.activeElement).toBe(qty);
+    await expectFocus(() => qty);
     expect((await db.listItems.get(items.pork.id))?.qty).toBe(0.5);
 
     fireEvent.change(qty, { target: { value: '1,25' } });
@@ -438,7 +437,7 @@ describe('List screen: editing an item', () => {
     await store('Fără magazin');
     fireEvent.click(screen.getByRole('button', { name: 'Editează Pâine' }));
     const form = screen.getByRole('form', { name: 'Editează Pâine' });
-    expect(document.activeElement).toBe(within(form).getByLabelText('Denumire'));
+    await expectFocus(() => within(form).getByLabelText('Denumire'));
 
     fireEvent.change(within(form).getByLabelText('Denumire'), {
       target: { value: 'Pâine neagră' },
@@ -466,6 +465,8 @@ describe('List screen: editing an item', () => {
 
     const plain = await screen.findByRole('region', { name: 'Articolele listei' });
     expect(within(plain).getByRole('form', { name: 'Editează Hârtie igienică' })).toBeTruthy();
+    // Nothing to wait for here: focus must not move, so let pending effects run and then look.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(document.activeElement).toBe(plainView);
   });
 

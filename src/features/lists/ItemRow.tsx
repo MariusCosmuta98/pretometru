@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { hasStore, setItemChecked, type PlannedItem } from '@/lists';
 import type { PretometruDB } from '@/storage';
 import { buttonQuiet } from '@/ui/controls';
@@ -50,7 +50,7 @@ export function ItemRow({
   // Focus follows the user's own actions only: into the editor when "Editează" opens it, back on
   // "Editează" when the editor's own buttons close it. An editor that merely appears again (the row
   // moved to another store, the view changed) or another item's editor must not take focus.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (editing && focusEditor.current) {
       focusEditor.current = false;
       row.current?.querySelector<HTMLElement>('form input, form select')?.focus();

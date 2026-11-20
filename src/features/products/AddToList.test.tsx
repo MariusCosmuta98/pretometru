@@ -8,6 +8,12 @@ import { addProductToList, archiveList, createList, setItemChecked } from '@/lis
 import { listActive } from '@/storage';
 import { NOW, seedWorld } from './testing';
 
+/** Focus follows a commit by an effect or by an async write: wait for it (see docs/architecture.md section 7). */
+const expectFocus = (target: HTMLElement | (() => HTMLElement)) =>
+  waitFor(() => {
+    expect(document.activeElement).toBe(typeof target === 'function' ? target() : target);
+  });
+
 // uPlot draws on a canvas, which jsdom does not have: the chart itself is checked in a real browser.
 vi.mock('./PriceChart', () => ({ default: () => <div data-testid="price-chart" /> }));
 
@@ -48,7 +54,7 @@ describe('Product screen: Adaugă pe listă', () => {
     const { trigger, form } = await openPanel();
 
     const select = within(form).getByLabelText<HTMLSelectElement>('Lista');
-    expect(document.activeElement).toBe(select);
+    await expectFocus(() => select);
     expect(select.value).toBe(fresh.id);
     expect([...select.options].map((option) => option.textContent)).toEqual([
       'Nouă',
@@ -64,7 +70,7 @@ describe('Product screen: Adaugă pe listă', () => {
       `/liste/${fresh.id}`,
     );
     expect(screen.queryByRole('form', { name: 'Adaugă pe listă' })).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    await expectFocus(() => trigger);
     const items = await listActive(db.listItems);
     expect(items).toMatchObject([
       { listId: fresh.id, productId: paper.id, label: 'Hârtie igienică' },
@@ -119,7 +125,7 @@ describe('Product screen: Adaugă pe listă', () => {
 
     expect(within(form).queryByLabelText('Lista')).toBeNull();
     const name = within(form).getByLabelText('Numele listei noi');
-    expect(document.activeElement).toBe(name);
+    await expectFocus(() => name);
     fireEvent.change(name, { target: { value: ' Cumpărături ' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Adaugă' }));
 
@@ -142,7 +148,7 @@ describe('Product screen: Adaugă pe listă', () => {
 
     const alert = await within(form).findByRole('alert');
     expect(alert.textContent).toBe('Scrie un nume pentru lista nouă.');
-    expect(document.activeElement).toBe(within(form).getByLabelText('Numele listei noi'));
+    await expectFocus(() => within(form).getByLabelText('Numele listei noi'));
     expect(await db.lists.count()).toBe(1);
 
     fireEvent.change(within(form).getByLabelText('Numele listei noi'), {
@@ -185,14 +191,14 @@ describe('Product screen: Adaugă pe listă', () => {
 
     fireEvent.click(within(form).getByRole('button', { name: 'Anulează' }));
     expect(screen.queryByRole('form', { name: 'Adaugă pe listă' })).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    await expectFocus(() => trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(trigger);
     const again = await screen.findByRole('form', { name: 'Adaugă pe listă' });
     fireEvent.keyDown(within(again).getByLabelText('Lista'), { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Adaugă pe listă' })).toBeNull());
-    expect(document.activeElement).toBe(trigger);
+    await expectFocus(() => trigger);
     expect(await db.listItems.count()).toBe(0);
   });
 });

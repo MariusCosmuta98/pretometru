@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import {
   loadListView,
@@ -88,8 +88,9 @@ function LoadedList({ db, view }: { db: PretometruDB; view: ListView }) {
   const pendingFocus = useRef<{ id: string; direction: Direction }>(undefined);
 
   // A moved item can lose focus when the list re-renders in its new order: put it back on the
-  // button that was used (or on the other one when that has reached the end of the list).
-  useEffect(() => {
+  // button that was used (or on the other one when that has reached the end of the list), in the
+  // commit that shows the new order.
+  useLayoutEffect(() => {
     const request = pendingFocus.current;
     if (!request) return;
     pendingFocus.current = undefined;

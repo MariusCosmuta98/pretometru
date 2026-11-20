@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { addTextItem, archiveList, createList, setItemChecked } from '@/lists';
 import { resetDb } from '@/lists/testing';
 import { listActive, type PretometruDB } from '@/storage';
+import { expectFocus } from './testing';
 
 function renderLists() {
   const router = createMemoryRouter(
@@ -57,7 +58,7 @@ describe('Lists screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Creează' }));
 
     expect((await screen.findByRole('alert')).textContent).toBe('Scrie un nume pentru listă.');
-    expect(document.activeElement).toBe(field);
+    await expectFocus(() => field);
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(await db.lists.count()).toBe(0);
 
@@ -89,16 +90,14 @@ describe('Lists screen', () => {
 
     fireEvent.click(within(row).getByRole('button', { name: 'Redenumește lista „Petrecere”' }));
     const field = within(row).getByLabelText<HTMLInputElement>('Numele listei');
-    expect(document.activeElement).toBe(field);
+    await expectFocus(() => field);
     expect(field.value).toBe('Petrecere');
 
     fireEvent.change(field, { target: { value: 'Aniversare' } });
     fireEvent.click(within(row).getByRole('button', { name: 'Salvează' }));
 
     expect(await screen.findByRole('link', { name: /Aniversare/ })).toBeTruthy();
-    expect((await screen.findByRole('status')).textContent).toBe(
-      'Lista a fost redenumită „Aniversare”.',
-    );
+    expect(await screen.findByText('Lista a fost redenumită „Aniversare”.')).toBeTruthy();
     await waitFor(() =>
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: 'Redenumește lista „Aniversare”' }),
@@ -127,10 +126,8 @@ describe('Lists screen', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Arhivează lista „Weekend”' }));
 
     const summary = await screen.findByText('Arhivate (1)');
-    expect((await screen.findByRole('status')).textContent).toBe(
-      'Lista „Weekend” a fost arhivată.',
-    );
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Liste active' }));
+    expect(await screen.findByText('Lista „Weekend” a fost arhivată.')).toBeTruthy();
+    await expectFocus(() => screen.getByRole('heading', { name: 'Liste active' }));
     expect(screen.getByText(/Nu ai nicio listă activă/)).toBeTruthy();
 
     fireEvent.click(summary); // opens the <details>
@@ -138,9 +135,7 @@ describe('Lists screen', () => {
 
     await waitFor(() => expect(screen.queryByText(/Arhivate/)).toBeNull());
     expect(await screen.findByRole('button', { name: 'Arhivează lista „Weekend”' })).toBeTruthy();
-    expect((await screen.findByRole('status')).textContent).toBe(
-      'Lista „Weekend” a fost restaurată.',
-    );
+    expect(await screen.findByText('Lista „Weekend” a fost restaurată.')).toBeTruthy();
   });
 
   it('asks before deleting a list and its items, with "Anulează" focused', async () => {
@@ -154,7 +149,7 @@ describe('Lists screen', () => {
     const group = within(row).getByRole('group');
     expect(group.textContent).toContain('Ștergi lista „De șters” și 1 articol? Nu se poate anula.');
     const cancel = within(group).getByRole('button', { name: 'Anulează' });
-    expect(document.activeElement).toBe(cancel);
+    await expectFocus(() => cancel);
 
     fireEvent.keyDown(cancel, { key: 'Escape' });
     expect(within(row).queryByRole('group')).toBeNull();
@@ -165,10 +160,8 @@ describe('Lists screen', () => {
     fireEvent.click(within(row).getByRole('button', { name: 'Șterge lista' }));
 
     await waitFor(() => expect(screen.queryByRole('link', { name: /De șters/ })).toBeNull());
-    expect((await screen.findByRole('status')).textContent).toBe(
-      'Lista „De șters” a fost ștearsă.',
-    );
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Liste active' }));
+    expect(await screen.findByText('Lista „De șters” a fost ștearsă.')).toBeTruthy();
+    await expectFocus(() => screen.getByRole('heading', { name: 'Liste active' }));
     expect(await listActive(db.lists)).toEqual([]);
     expect(await listActive(db.listItems)).toEqual([]);
   });

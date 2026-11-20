@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import type { List, Product } from '@/domain';
 import { addProductToList, createListWithProduct, listOpenLists, type AddStatus } from '@/lists';
@@ -57,8 +57,10 @@ export function AddToList({ db, product }: { db: PretometruDB; product: Product 
     };
   }, [db, open]);
 
-  // Focus goes to the first field once the lists are known (the fields exist only then).
-  useEffect(() => {
+  // Focus goes to the first field once the lists are known (the fields exist only then). A layout
+  // effect, so it runs in the commit that shows the form: a passive one can run after the user has
+  // already closed it again and would pull focus back into a form that is about to go.
+  useLayoutEffect(() => {
     if (open && lists) (listField.current ?? nameField.current)?.focus();
   }, [open, lists]);
 
