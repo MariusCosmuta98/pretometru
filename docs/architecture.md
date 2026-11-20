@@ -11,7 +11,7 @@ it, what may import what, and how to add a screen without touching shared files*
 | Domain     | `src/domain`                | `zod`                                   | React, Dexie, storage, parsers, features, app, ui |
 | Parsers    | `src/parsers`               | domain                                  | React, Dexie, storage, features, app, ui         |
 | Storage    | `src/storage`               | domain, Dexie                           | React, features, app, ui                         |
-| Logic      | `catalog`, `analytics`, `import`, `sync`, `ai`, `ocr` | domain, storage, each other (no cycles) | features, app, ui (keep them React-free)        |
+| Logic      | `catalog`, `analytics`, `import`, `sync`, `ai`, `ocr` | domain, parsers, storage, each other (no cycles) | features, app, ui (keep them React-free)        |
 | UI         | `src/features/<name>`       | everything above, `src/app`, `src/ui`   | **another feature's folder**                     |
 | Shell      | `src/app`                   | `src/ui`; discovers features by glob    | importing features directly                      |
 
@@ -29,9 +29,10 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | ---------------------------- | -------------------------------------------------------------------- | ------------------------------------- |
 | `src/domain/`                | zod contracts, money/units/names/dates/pricing, ids                  | `domain-storage` (contract changes: contracts.md + schemas + fixtures together) |
 | `src/storage/`               | Dexie schema + migrations, repositories, seed, JSON export/import    | `domain-storage`                      |
-| `src/parsers/`               | per-store parsers, detection, validations (pure)                     | `parsers-pdf-text`, `parsers-ocr-text` |
+| `src/parsers/`               | parser registry, `parseReceipt`, `validateReceipt`, PDF row reconstruction (pure); one folder per store: `kaufland`, `metro` (`parsers-pdf-text`), `lidl`, `mega-image`, generic fallback (`parsers-ocr-text`) | `parsers-pdf-text`, `parsers-ocr-text` |
 | `src/ocr/`                   | Tesseract worker, canvas preprocessing, crops, "paste text"          | `ocr-pipeline`                        |
 | `src/import/`                | file -> engine -> parser -> `ParsedReceipt` -> storage orchestration | `import-review-ui`                    |
+| `src/import/pdf/`            | pdf.js adapter: `extractPdfText(ArrayBuffer)` -> `ReceiptSource`; the only importer of `pdfjs-dist`, worker bundled locally and loaded lazily | `parsers-pdf-text` (the rest of `src/import/` is `import-review-ui`) |
 | `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), auto-categories, merge/split (§5a) | `catalog-matching`                    |
 | `src/analytics/`             | price observations, unit price, cheapest store, trends               | `price-analytics`                     |
 | `src/sync/`                  | GitHub sync (LWW + tombstones)                                       | `sync-github`                         |
@@ -268,3 +269,35 @@ CI (`.github/workflows/ci.yml`) runs the same four steps and, on `main`, deploys
 - Node `^22.22 || ^24 || >=26` (React Router 8); CI and `.nvmrc` use Node 26.
 - TypeScript flags worth knowing: `noUncheckedIndexedAccess` (index results are `T | undefined`),
   `verbatimModuleSyntax` (use `import type`), `erasableSyntaxOnly` (no enums, namespaces or parameter properties).
+
+## 10. Parsers (`src/parsers`, import from `@/parsers`)
+
+Pure (see §1): a `ReceiptSource` goes in, a `ParsedReceipt` comes out, nothing throws. Contracts: [`contracts.md`](contracts.md).
+
+```ts
+import { parseReceipt } from '@/parsers';
+
+const receipt = parseReceipt(source, { now: new Date() }); // best parser + validation warnings
+```
+
+| Export                                  | Purpose                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `parseReceipt(source, { now })`         | runs every parser's `detect`, parses with the best one (ties: registry order), appends the `validateReceipt` warnings, never throws. A parser that throws is skipped for the next best; a document nobody recognises comes back with no lines and `UNKNOWN_CHAIN`, `MISSING_TOTAL`, `MISSING_DATE` |
+| `validateReceipt(receipt, { now })`     | `SUM_MISMATCH`, `LINE_ARITHMETIC`, `VAT_MISMATCH`, `FUTURE_DATE`, `MISSING_DATE`, `MISSING_TOTAL`; `DUPLICATE` needs the database, so the import orchestrator adds it (`findDuplicateReceipts`) |
+| `check*`, `sumOfLines`, `expectedLineTotal`, `*_TOLERANCE_BANI` | the individual checks and their tolerances, exported for reuse (OCR digit repair) |
+| `engineForSource(source)`               | `meta.engine` of a source kind: `pdf-text` -> `pdfjs`, `ocr-text` -> `tesseract`, `pasted-text` -> `paste` |
+| `parsers`, `rankParsers`, `parseReceiptWith(parsers, source, opts)` | the registry, and `parseReceipt` over an explicit parser set (tests) |
+
+**Adding a parser**: create `src/parsers/<id>/index.ts` that default-exports a `ReceiptParser`
+(`{ id, version, detect, parse }`). `src/parsers/registry.ts` discovers it with `import.meta.glob`, so no shared file
+changes; a test fails on duplicate ids or a version that is not semver.
+
+- A parser folder imports shared helpers from the specific modules (`../validate`, `../source`, `../pdf-rows`), never
+  from the `@/parsers` barrel: the barrel imports the registry, which imports every parser (an import cycle).
+- `detect` answers 0..1 (0 = not mine). The generic fallback answers a low constant so any specific parser wins.
+- `meta.parser` is the folder id, `meta.engine` comes from `engineForSource`, `meta.parserVersion` is semver: bump it
+  when the output for the same input changes.
+- Report problems as `warnings`, never by throwing. Leave the arithmetic checks to `validateReceipt`; a total that cannot
+  be found is `grandTotalBani: 0` (see the warning notes in `contracts.md`). Warning messages are Romanian.
+- Tests: a golden test per `tests/fixtures/<store>/` plus small synthetic cases next to the parser. `makeParsedReceipt()`
+  and `makeParsedLine()` (`@/parsers/testing`, test-only) build valid receipts.

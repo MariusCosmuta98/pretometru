@@ -92,6 +92,15 @@ type WarningCode =
 interface ParseWarning { code: WarningCode; message: string; lineIdx?: number }
 ```
 
+Warnings: `code` is the stable identifier, `message` a short **Romanian** sentence for the review screen, `lineIdx` the
+`idx` of the line it is about. `validateReceipt` (`src/parsers/validate.ts`) raises `SUM_MISMATCH` (Σ lines vs
+`grandTotalBani` beyond 5 bani, also `paidBani` vs `grandTotalBani - voucherBani`), `LINE_ARITHMETIC` (1 ban, plus half a
+ban per sold unit because the unit price is rounded; only lines that print `unitPriceBani`), `VAT_MISMATCH` (printed
+`totals.vat` against itself and against the lines of each rate: 5 bani on a rate's gross, 2 on derived VAT amounts),
+`FUTURE_DATE`, `MISSING_DATE` and `MISSING_TOTAL`; the import orchestrator adds `DUPLICATE` (it needs the database).
+`grandTotalBani` is required, so **a parser that cannot find the total writes 0**: a 0 total over lines worth money, or
+over no lines, is reported as `MISSING_TOTAL` (and then `SUM_MISMATCH` stays quiet).
+
 ## Parser input
 
 ```ts
