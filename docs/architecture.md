@@ -17,8 +17,8 @@ it, what may import what, and how to add a screen without touching shared files*
 
 - `src/domain` and `src/parsers` are **pure**: no DOM, IndexedDB, network or clock (inject `now`). They run under
   Node/Vitest. ESLint enforces the import and global-variable bans (`eslint.config.js`).
-- `src/catalog` and `src/analytics` are React-free: ESLint rejects `react`, `react-router` and imports of `@/features`,
-  `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
+- `src/catalog`, `src/analytics` and `src/import` are React-free: ESLint rejects `react`, `react-router` and imports of
+  `@/features`, `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
 - Features share code only through `src/ui`, `src/domain`, `src/storage` or a logic module, never by reaching into a
   sibling feature.
 - Path alias: `@/` = `src/` (configured in `tsconfig*.json` and `vite.config.ts`).
