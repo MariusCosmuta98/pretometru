@@ -5,14 +5,14 @@
  *   toilet paper: METRO ≈ 1,30 lei/roll < Kaufland 1,45 < Mega 2,00
  *   wet wipes 120 buc: 3,98 (METRO, after discount) vs 6,99 (Kaufland)
  *
- * Kaufland and METRO are the sanitized ground-truth receipts of tests/fixtures; the Mega Image
- * receipt stays synthetic until its fixture lands. Mega prints no pack size, so its 8 rolls come
- * from the alias `defaultPack`.
+ * The receipts are the sanitized ground truth of tests/fixtures (`expected.json`, not the noisy OCR
+ * variants). Mega prints no pack size ("CARE HARTIE 10R 3S"), so its 10 rolls come from the alias
+ * `defaultPack`.
  */
 import { describe, expect, it } from 'vitest';
 import { getProductSummary } from '@/analytics';
 import { createProduct, rememberMappings, suggestMappings } from '@/catalog';
-import { parsedReceipt, testStore } from '@/catalog/testing';
+import { testStore } from '@/catalog/testing';
 import { formatBani, formatMilliBani, SEED_CATEGORIES, type ParsedReceipt } from '@/domain';
 import { ensureSeed, saveReceipt, type LineInput, type PretometruDB } from '@/storage';
 import { createTestDb } from '@/storage/testing';
@@ -23,13 +23,10 @@ const BABY = SEED_CATEGORIES[11]!.id;
 
 const kaufland = getFixture('kaufland-2026-11-07');
 const metro = getFixture('metro-invoice-2026-08-12');
+const mega = getFixture('mega-image-2026-11-03');
 const now = new Date(kaufland.now);
 
-/** Mega Image prints "HARTIE IGIENICA" with no size: 16,00 lei for the pack. */
-const mega: ParsedReceipt = {
-  ...parsedReceipt('mega-image', [{ rawName: 'HARTIE IGIENICA', lineTotalBani: 1600 }]),
-  purchasedAt: '2026-11-03T16:20',
-};
+const MEGA_PAPER = { rawName: 'CARE HARTIE 10R 3S', ean: '594906503482' };
 
 /**
  * What the import flow does with a parsed receipt: suggest mappings, take the product the user
@@ -123,11 +120,11 @@ async function world() {
     'KLC HARTIE IG 8ROLE': paper.id,
     'BUBUBEBE SERV 120BUC': wipes.id,
   });
-  // ...tells Mega once that its toilet paper is 8 rolls, and the next import is automatic.
+  // ...tells Mega once that its toilet paper is 10 rolls, and the next import is automatic.
   await rememberMappings(db, 'mega-image', [
-    { rawName: 'HARTIE IGIENICA', productId: paper.id, pack: { qty: 8, unit: 'role' } },
+    { ...MEGA_PAPER, productId: paper.id, pack: { qty: 10, unit: 'role' } },
   ]);
-  await importReceipt(db, mega);
+  await importReceipt(db, mega.expected);
   return { db, paper, wipes };
 }
 
@@ -154,13 +151,13 @@ describe('plan §7.7: prices compared across stores', () => {
 
   it('takes the Mega size from the alias: the printed line has none', async () => {
     const { db, paper } = await world();
-    const line = await db.lines.filter((l) => l.rawName === 'HARTIE IGIENICA').first();
+    const line = await db.lines.filter((l) => l.rawName === MEGA_PAPER.rawName).first();
     expect(line).toMatchObject({
       productId: paper.id,
-      packQty: 8,
+      packQty: 10,
       packUnit: 'role',
       baseUnit: 'role',
-      pricePerBaseMilliBani: 200_000,
+      pricePerBaseMilliBani: 199_900, // 19,99 lei / 10 rolls
     });
   });
 

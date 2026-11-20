@@ -5,6 +5,7 @@ export { categoryForHint } from './category-hints';
 export { suggestMappings } from './matching';
 export { mergeProducts, splitProduct } from './merge';
 export type { MergeResult, SplitInput, SplitResult } from './merge';
+export { rankProducts } from './product-search';
 export { createProduct, searchProducts } from './products';
 export type {
   LineMapping,
