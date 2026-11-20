@@ -34,6 +34,8 @@ interface Props {
   mode: 'connect' | 'update';
   repoDefault?: string;
   onCancel?: () => void;
+  /** The connection was saved and the sync has started. In `connect` mode the section switches views by itself. */
+  onSaved?: () => void;
 }
 
 function Checklist({ passed, failed }: { passed: readonly VerifyStep[]; failed: boolean }) {
@@ -97,7 +99,7 @@ function Instructions() {
   );
 }
 
-export function ConnectForm({ mode, repoDefault = 'pretometru-data', onCancel }: Props) {
+export function ConnectForm({ mode, repoDefault = 'pretometru-data', onCancel, onSaved }: Props) {
   const ids = {
     token: useId(),
     repo: useId(),
@@ -175,7 +177,8 @@ export function ConnectForm({ mode, repoDefault = 'pretometru-data', onCancel }:
       return;
     }
     // The section switches to the connected view as soon as the connection is saved; the outcome
-    // of the first sync is recorded in the status it shows.
+    // of the first sync is what that view shows. A form that is already inside it closes itself.
+    onSaved?.();
     void runSync().catch(() => undefined);
   }
 

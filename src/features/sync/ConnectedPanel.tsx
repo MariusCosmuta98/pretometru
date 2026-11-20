@@ -194,6 +194,7 @@ export function ConnectedPanel({ view }: Props) {
           mode="update"
           repoDefault={`${connection.owner}/${connection.repo}`}
           onCancel={() => setChangingToken(false)}
+          onSaved={() => setChangingToken(false)}
         />
       ) : (
         <div className="flex flex-wrap gap-2">

@@ -483,12 +483,13 @@ describe('a connected device', () => {
       await within(section).findByRole('button', { name: 'Salvează și sincronizează' }),
     );
 
-    await waitFor(async () =>
-      expect((await harness.db.syncState.get('sync.token'))?.value).toEqual({
-        kind: 'plain',
-        token: SECOND_TOKEN,
-      }),
-    );
+    // The form closes once the token is saved, and the panel shows the sync that follows.
+    await waitFor(() => expect(within(section).queryByLabelText('Token GitHub')).toBeNull());
+    expect(await within(section).findByText(/Totul era deja la zi\./)).toBeTruthy();
+    expect((await harness.db.syncState.get('sync.token'))?.value).toEqual({
+      kind: 'plain',
+      token: SECOND_TOKEN,
+    });
     expect((await readConnection(harness.db))?.deviceId).toBe('DEV001');
   });
 
