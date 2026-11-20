@@ -146,14 +146,40 @@ interface ReceiptParser {
   ban from the printed total (rounding per VAT rate). `grandTotalBani` is the invoice gross, `paidBani` the "Total de
   plata" row, `totals.vat` the table under "Total factura". `purchasedAt` is "Data Vanzare", `storeName` the seller as
   printed, `branch.city` the city of "METRO Cash&Carry <city>". Seller, bank, buyer and client-number rows are never read.
-- **Lidl** (app screenshot, OCR): two-line items `qty BUC x price` then `name total VATclass`; classes A=21, B=11;
-  split card payments (several `CARD` lines). OCR confuses 0/8 and similar; arithmetic checks catch it. Review: the date
-  is often after today, so `FUTURE_DATE` must be accepted explicitly before the receipt is confirmed; `REPAIRED_DIGITS`
-  stays listed until the user edits or verifies that line; line crops show the printed row while the photo is in memory.
-- **Mega Image** (photo, OCR): `name price` then the EAN on the next line; no store name on the receipt
-  (only a merchant code on the card slip); EAN may be truncated; watermark/low resolution -> expect review. Review: the
+- **Lidl** (app screenshot read by OCR, or pasted text; `src/parsers/lidl`): two-line items `n,000 BUC x price` then
+  `name total VATclass`, so every product has its `unitPriceBani`; `Reducere ...` rows are discounts. Classes A=21 and
+  B=11 (the printed `TVA A 21,00% 5,91` rows fill `totals.vat`; without them the usual rates apply to the lines).
+  `grandTotalBani` is `TOTAL` (else `Subtotal`, else what was paid); `TOTAL TVA` is not it. `paidBani` = Σ `CARD` /
+  `NUMERAR` rows - `REST`: split card payments are several `CARD` lines. `branch.city` is the city of the postal
+  address, `purchasedAt` the `DATA:dd/mm/yyyy ORA:hh-mm-ss` row; no `documentNo`. Card slip, loyalty and footer rows
+  are never read. A quantity line whose product row is unreadable stays as `Produs necunoscut` with `LOW_CONFIDENCE`
+  on the line. OCR confuses 0/8 and similar; the digit repair (below) fixes a unit price or a VAT rate misread that way
+  and flags it; a misread name or time stays as the OCR read it. Review: the date is often after today, so
+  `FUTURE_DATE` must be accepted explicitly before the receipt is confirmed; `REPAIRED_DIGITS` stays listed until the
+  user edits or verifies that line; line crops show the printed row while the photo is in memory.
+- **Mega Image** (photo read by OCR, or pasted text; `src/parsers/mega-image`): `name price` then the EAN on the next
+  line (12 digits, kept as printed: a truncated or misread EAN stays so); no store name on the receipt, only a merchant
+  line on the card slip (`COMERCIANT MEGA...`). The chain is found from that line or, without it, from the layout (at
+  least two products, nearly all followed by an EAN); a different chain is the user's choice in the review. No VAT or
+  payment rows are printed, so `totals.vat` and `paidBani` stay absent. Products stop at the `TOTAL` row (else at the
+  slip); the digits-only line under it is not a product. The OCR of a low-resolution photo is read literally: when no
+  unique confusable-digit fix explains a wrong price, `SUM_MISMATCH` is the flag. Review: the
   store is chosen in the review (the chain may arrive as `unknown`), the receipt follows the store chosen; misread prices
   are corrected against the line crop and the live sum, and `SUM_MISMATCH` stays until the lines add up to the total.
+- **Other stores, OCR or pasted text** (`src/parsers/generic`): the fallback. `detect` is a constant 0.05 (0 for a PDF),
+  so every specific parser wins. It reads `name total [class]` rows with the quantity above (`qty BUC x price`) or
+  inline (`2 x 2,50`) and an EAN row below, `TOTAL` / `Subtotal` and `DATA ... ORA ...`; the chain is `unknown`
+  (`UNKNOWN_CHAIN`) and the whole document carries `LOW_CONFIDENCE` (more clearly when the OCR confidence is low).
+- **OCR digit repair** (`src/parsers/plain-text/repair.ts`, run last by the Lidl, Mega Image and generic parsers):
+  only when `SUM_MISMATCH` or `LINE_ARITHMETIC` would fire (a receipt that validates is returned untouched). It looks
+  for the fewest corrections of confusable digits (0/8, 5/6/9, 1/7) that make the receipt add up, with the checks of
+  `validateReceipt`: every line that prints a unit price and fails `qty x unit = total` has to be fixed in its own
+  numbers, a line that holds is never touched, and at most one more number may change (the total of a line without a
+  unit price, or the grand total): at most 3 corrections. It is applied **only when that fix is unique**; each repaired
+  line gets `REPAIRED_DIGITS` with its `lineIdx` (the VAT rate of a store's `TVA` table is document-level, without
+  `lineIdx`). When several fixes tie, nothing is changed and the lines that could hold the error get `LOW_CONFIDENCE`;
+  when none exists, nothing is flagged beyond the validation warnings. A repair is evidence, not proof: a lost or
+  inserted digit is never repaired, and the review shows the line crop.
 - **Kaufland / METRO** (review): `totalBani` is the goods total and `paidBani` ("Plătit") the amount after a voucher; a
   METRO difference of 1 ban between Σ lines and the total is inside the tolerance and raises no warning.
 

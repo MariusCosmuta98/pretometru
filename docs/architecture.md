@@ -50,7 +50,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
 | `src/ui/`                    | shared presentational components and icons                           | shared (additive edits)               |
 | `config/`                    | build-time helpers (CSP plugin); Node only, never bundled            | `scaffold-pwa`                        |
-| `scripts/`                   | Node scripts: leak check (`check-leaks.ts`), fixture sanitizer       | `sample-fixtures`                     |
+| `scripts/`                   | Node scripts: leak check (`check-leaks.ts`), fixture sanitizer; the local OCR benchmark (`ocr-bench.ts`, §11) | `sample-fixtures`; `ocr-bench*` : `ocr-pipeline` |
 | `tests/`                     | cross-cutting tests (`tests/fixtures.test.ts`)                       | shared                                |
 | `tests/fixtures/`            | sanitized real samples, synthetic cases, typed loader (see §7)       | `sample-fixtures` (others: read only) |
 | `public/`, `design/`         | static assets and icon sources                                       | `scaffold-pwa`                        |
@@ -414,6 +414,7 @@ Conventions every case follows (checked by `tests/fixtures.test.ts`):
 | `npm test`                                         | Vitest, single run                                    |
 | `npm run build` / `npm run preview`                | production build / serve it at <http://localhost:4173/pretometru/> |
 | `npm run check:leaks`                              | leak scan of every tracked file (also the pre-commit hook and a CI step) |
+| `npm run ocr:bench`                                | local OCR benchmark on the private originals (not part of `check` or CI, §11) |
 | `npm run check`                                    | leaks + lint + typecheck + test + build (the pre-push gate) |
 
 Git flow (trunk-based): branch, `git fetch && git rebase origin/main`, `npm run check`, `git push origin HEAD:main`.
@@ -468,6 +469,31 @@ changes; a test fails on duplicate ids or a version that is not semver.
   from monospaced text art (runs separated by two or more spaces become items, the column gives `x`). All are in
   `@/parsers/testing` and test-only.
 
+### OCR and pasted text (`lidl`, `mega-image`, `generic`; helpers in `src/parsers/plain-text`)
+
+The three parsers read `ocr-text` and `pasted-text` sources alike (text copied with iOS Live Text or Google Lens is the
+OCR text with fewer misreads) and answer an empty receipt for `pdf-text`. Layouts, detection and the repair rules are in
+the per-store notes of [`contracts.md`](contracts.md). Detection is deliberately strict: Lidl counts only its own
+`n,000 BUC x price` rows (a weighed `0,436 KG x 14,99` row is on many receipts), Mega Image needs its merchant line or at
+least two products each followed by an EAN, and the generic fallback answers 0.05 for any text. Every parser ends with
+`repairReceipt`.
+
+| Module (`plain-text/`)         | Purpose                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `text-lines.ts`                | `textLines(source)`: one `TextLine` per printed row, with the no-break spaces, `×` and odd separators normalised; `confidence` (0..1) and `bbox` come from the OCR line, so every parsed line can carry its crop box (`unionBox`, `meanConfidence`) |
+| `amounts.ts`, `quantity-line.ts`, `ean.ts` | `findAmounts` / `trailingAmount` (`6,54 B`, `1.234,56`, `-1,50`; OCR letters read for digits), `readQuantityLine` (`2,000 BUC x 4,05`, `0,436 KG x 14,99`), `parseEanLine` with the EAN check digit |
+| `items.ts`, `rows.ts`          | `readItems` (product rows with the quantity above or inline and the EAN below); the strict totals block `readTotalRow`, `readSubtotalRow`, `readPaymentRow`, `readChangeRow`, `isTotalsRow`: a label has to stand alone before its amount, so a product called `Total 0% grasime` or `Card cadou` is a product |
+| `dates.ts`, `vat-rate.ts`      | `findPurchasedAt` (`DATA:29/12/2026 ORA:17-12-30`, two-digit years), `readVatRate` (an illegal printed rate becomes the nearest legal one, the VAT amount and the class's usual rate break ties) |
+| `receipt.ts`                   | `buildLine`, `sourceConfidence`, `withWarnings`                                                    |
+| `repair.ts`                    | the digit repair: `repairReceipt(receipt)` (what the parsers call last), `repairDigits` (`valid`, `repaired`, `ambiguous` or `unrepairable`), `digitAlternatives`, `CONFUSABLE_DIGITS`, `MAX_CORRECTIONS` |
+
+The repair reuses the checks of `validateReceipt` (`checkSumMismatch`, `checkLineArithmetic`, `checkVatTotals`) instead of
+a second implementation of the arithmetic. Its tests include fast-check properties: a receipt that already validates is
+returned as the same object; a single misread digit is restored exactly or left alone; whatever a repair returns passes
+the checks, differs from the input in at most 3 numbers and only by confusable digits, and needs no further repair.
+`plain-text/robustness.test.ts` feeds the three parsers arbitrary text: they never throw and always return a
+schema-valid receipt.
+
 ### PDF text (`src/import/pdf`, import from `@/import/pdf`)
 
 ```ts
@@ -511,9 +537,10 @@ How it works:
 
 - **Preprocessing** (`preprocess.ts`, pure typed-array code: the same under Node): pick the cleanest colour channel
   (`'auto'` = best ink/paper separation; the Mega Image photo reads best in red, a screenshot in any), bilinear upscale
-  (3x, reduced so the result stays under 12 megapixels: iOS Safari canvases stop at about 16.7), 1st-99th percentile
-  contrast stretch, Otsu threshold. Photos above 16 megapixels are shrunk before their pixels are read. The result goes
-  to Tesseract as a PNG written by `png.ts` (stored deflate blocks: no compressor, identical in every runtime).
+  (4x, reduced so the result stays under 12 megapixels: iOS Safari canvases stop at about 16.7, so a large photo is
+  not upscaled at all), 1st-99th percentile contrast stretch, Otsu threshold. Photos above 16 megapixels are shrunk
+  before their pixels are read. The result goes to Tesseract as a PNG written by `png.ts` (stored deflate blocks: no
+  compressor, identical in every runtime). Every step is an option (`recognizeImage(image, { preprocessing: { scale: 3 } })`).
 - **Engine** (`engine.ts`): one LSTM-only worker for `ron+eng`, page segmentation mode 6 (one block, which keeps
   "name ..... price" together), started lazily, reused between calls, terminated when idle or **aborted** (the only way
   to cancel a running job). Jobs run one at a time. `onProgress` is 0..1 and never decreases.
@@ -528,6 +555,25 @@ How it works:
   time (cache-first by URL); Tesseract.js's IndexedDB cache is off so the files are not stored twice.
 - Tests are Node-only: pure preprocessing/PNG/row merging, the worker host with a fake factory, and a real Vite build of
   `ocrAssetsPlugin` (`config/ocr-assets.test.ts`). The browser parts (canvas decode, crop) are covered by a manual check.
+- **Benchmark** (`npm run ocr:bench`, `scripts/ocr-bench.ts`; not part of `check` or CI): for each real fixture that has
+  `<fixture id>.jpg` or `.jpeg` in `~/.pretometru-private/samples/` (override: `--samples <dir>` or
+  `PRETOMETRU_SAMPLES`), it runs the same preprocessing and Tesseract.js engine as `recognizeImage` (under Node, with
+  the `ron`/`eng` data from `node_modules`) and the real parsers, and compares the receipt with the fixture's
+  `expected.json` (`scripts/ocr-bench-metrics.ts`, unit-tested). It prints **metrics only**, never a line of the
+  receipt: the parser that was picked, the OCR confidence, whether the total is right, whether Σ lines = total
+  (`ok`, `MISMATCH`, or `NO TOTAL`), the share of lines found, of exact line totals and of exact quantities, the
+  number of *silent* errors (a wrong price that no warning flags: the sum checks out and the line carries no
+  warning), the time and the warning codes. Options: `--channel`, `--scale`, `--threshold`, `--no-stretch`, `--psm`,
+  `--only`; `--sweep` tries every channel x scale of a small grid, one row each, to retune the defaults when samples
+  are added. EXIF rotation is not applied (the originals must be upright). Result with the defaults on the two real
+  samples: total, sum, lines, prices and quantities all exact (Lidl without its date row, flagged `MISSING_DATE`; Mega
+  Image with one `REPAIRED_DIGITS`).
+- **One pass is sensitive to the scale.** On the same photo, a small change of the upscale can flip a misread: 3x
+  reads the Lidl date row and loses the Mega Image total, 4x does the reverse, 2x misreads prices on both. So the
+  defaults are a compromise, and the cheap fix is on the caller's side: when `parseReceipt` still reports
+  `SUM_MISMATCH`, `MISSING_TOTAL`, `MISSING_DATE` or `LINE_ARITHMETIC` on an `ocr-text` receipt, run `recognizeImage`
+  again with `{ preprocessing: { scale: 3 } }` and keep the receipt with fewer warnings (the OCR module cannot do it
+  itself: it knows nothing of the parsers). The import orchestrator (§12) does not retry yet.
 
 ## 12. Import and review (`src/import`, `src/features/add-receipt`, `src/features/receipts`)
 
