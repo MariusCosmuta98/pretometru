@@ -32,7 +32,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/parsers/`               | per-store parsers, detection, validations (pure)                     | `parsers-pdf-text`, `parsers-ocr-text` |
 | `src/ocr/`                   | Tesseract worker, canvas preprocessing, crops, "paste text"          | `ocr-pipeline`                        |
 | `src/import/`                | file -> engine -> parser -> `ParsedReceipt` -> storage orchestration | `import-review-ui`                    |
-| `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), categories          | `catalog-matching`                    |
+| `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), auto-categories, merge/split (§5a) | `catalog-matching`                    |
 | `src/analytics/`             | price observations, unit price, cheapest store, trends               | `price-analytics`                     |
 | `src/sync/`                  | GitHub sync (LWW + tombstones)                                       | `sync-github`                         |
 | `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
@@ -181,6 +181,44 @@ closes this tab's connection and reopens it on the next query (`getDb()` keeps r
 **Tests** use an in-memory IndexedDB: `const db = await createTestDb()` from `src/storage/testing.ts` returns an empty,
 unseeded database (call `ensureSeed(db)` if the test needs the categories); `makeReceipt()`, `makeLine()`, ... come from
 `src/domain/testing.ts`. Both modules are test-only and are not re-exported from the barrels.
+
+## 5a. Catalog (`src/catalog`, import from `@/catalog`)
+
+React-free logic over the domain and storage layers: it turns printed receipt lines into products and remembers the
+user's choices. The Review screen builds its mapping UI on this interface.
+
+```ts
+import { suggestMappings, rememberMappings, searchProducts, createProduct } from '@/catalog';
+
+const mappings = await suggestMappings(db, parsedReceipt); // one LineMapping per line, same order
+// ...the user confirms or corrects, the receipt is saved with saveReceipt(), then:
+await rememberMappings(db, parsedReceipt.chain, [{ rawName, ean, productId, pack }]);
+```
+
+| Function                                          | Purpose                                                                                      |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `suggestMappings(db, receipt)`                    | `LineMapping[]`: `{ productId?, categoryId?, pack?, via, candidates }` for every line         |
+| `searchProducts(db, query, limit = 20)`           | type-ahead by name, brand or EAN prefix (diacritics, case and punctuation never matter)       |
+| `createProduct(db, input)`                        | new product; refuses an empty name, an unknown category and the system Non-produs category    |
+| `rememberMappings(db, chain, choices)`            | upserts one alias per chain + normalised name (with EAN and `defaultPack`); all or nothing    |
+| `categoryForHint(header)`                         | seed category for a printed section header ("Mopro/Brânză/Ouă" -> Lactate & ouă) or `undefined` |
+
+How a line is matched, in this order (`via` names the first step that applied):
+
+1. **alias**: the newest live alias of `(receipt.chain, normalizeName(rawName))`, else one without a chain. An alias of
+   another chain is deliberately not used: the same printed name can be a different product elsewhere.
+2. **ean**: the product, or the alias rows, that carry the code (UPC-A and EAN-13 spellings compare equal). Assigned only
+   when the code has at least 8 digits (shorter ones are truncated prints) and exactly one product claims it;
+   otherwise the products only become candidates.
+3. **fuzzy**: likely products in `candidates`, best first, `score` 0..1 (higher is better). Never assigned. (Until the
+   fuzzy matcher lands, only an ambiguous or truncated EAN produces candidates.)
+4. **category-hint**: the line's `storeCategoryHint` mapped onto a live seed category (`categoryId`, no product).
+5. **none**.
+
+Only `alias` and `ean` set `productId` (with the product's `categoryId`; the product is also `candidates[0]`, score 1):
+a wrong silent merge is worse than a missing one. `pack` is set only when an alias remembers a size that the printed
+name lacks and the line is sold by the piece; a size printed on the receipt always wins. Non-product lines get the
+Non-produs category and are never matched.
 
 ## 6. Build, PWA and CSP
 
