@@ -239,3 +239,12 @@ categories, lists, listItems, settings } }`. Tombstones are included. Sync state
 reconciles the lines of every touched receipt (`linesUpdatedAt`), because two devices can re-save the same receipt
 with different line sets. A newer `formatVersion` is refused rather than imported lossily. Export leaves out (and
 reports as `skipped`) stored records that no longer satisfy their schema instead of failing.
+
+**Sync repository (`pretometru-data`, a private GitHub repository; docs/architecture.md §13)**: the same records as the
+backup, tombstones included, one JSON file per table and creation month: `data/<table>/<YYYY-MM>.json` =
+`{ "records": [...] }` with one record per line, sorted by id (the month comes from the record's ULID, so a record never
+changes file). Also `data/settings.json` (portable settings only) and `data/pretometru.json`
+(`{ "format": "pretometru-data", "formatVersion": 1 }`). The merge is the backup's `merge` import: last write wins per
+record on `updatedAt`, and the lines of every touched receipt are reconciled. A change that an older app cannot read
+bumps `formatVersion` (`SYNC_FORMAT_VERSION`; the older app then refuses to sync instead of dropping data) and, like
+every contract change, updates this file, the zod schemas and the fixtures together. The GitHub token is never part of it.

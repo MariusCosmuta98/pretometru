@@ -15,6 +15,67 @@ Aplicația este live la <https://mariuscosmuta98.github.io/pretometru/>.
 
 > Stadiu: în construcție (faza A, fundația). Ecranele sunt deocamdată substituenți.
 
+## Sincronizare și backup cu GitHub (opțional)
+
+Datele rămân în browserul tău. Ca să le ai pe mai multe dispozitive și să nu le pierzi dacă browserul își șterge datele,
+aplicația le poate sincroniza într-un **depozit GitHub privat al tău**: fiecare sincronizare este un commit, iar
+istoricul Git este backup-ul. Nu ai nevoie de nimic în afară de contul GitHub gratuit.
+
+### Configurare (o singură dată)
+
+1. Pe GitHub creează un depozit **privat** numit `pretometru-data` (<https://github.com/new>): alege *Private* și
+   bifează *Add a README file*.
+2. Creează un token *fine-grained* (<https://github.com/settings/personal-access-tokens/new>):
+   - *Repository access* → *Only select repositories* → doar `pretometru-data`;
+   - *Repository permissions* → *Contents* → **Read and write** (restul rămân pe *No access*; *Metadata: Read-only*
+     apare singur);
+   - alege o dată de expirare: după ea creezi alt token și îl schimbi din aplicație (*Schimbă tokenul*).
+3. În aplicație: **Setări → Sincronizare GitHub**. Lipește tokenul, apasă *Verifică conexiunea*, apoi *Conectează…*.
+   Poți proteja tokenul cu o parolă, care se cere la fiecare pornire a aplicației.
+4. Pe celelalte dispozitive repetă pasul 3 cu **același depozit** (ideal, cu un token separat pentru fiecare dispozitiv).
+   La prima sincronizare datele se îmbină: pentru fiecare înregistrare rămâne varianta modificată ultima, iar nimic nu
+   se șterge decât dacă a fost șters explicit.
+
+Sincronizarea pornește singură (la deschiderea aplicației, când te întorci în ea, când ești din nou online și la câteva
+secunde după ce modifici date); o poți opri sau poți apăsa oricând *Sincronizează acum*.
+
+### Ce e bine să știi
+
+- Aplicația **refuză** un depozit public: bonurile tale nu ajung niciodată într-un depozit public.
+- Tokenul este păstrat doar în acest browser (IndexedDB), niciodată în exporturi, în backup-uri sau în depozit. Dacă
+  l-ai pierdut sau crezi că l-a văzut altcineva, revocă-l pe GitHub și creează altul.
+- Aplicația se conectează doar la `api.github.com`.
+- *Deconectează* scoate tokenul de pe dispozitiv; datele rămân și local, și în GitHub.
+- Nu edita manual fișierele din `data/`. Dacă un fișier devine ilizibil, aplicația nu modifică nimic și îți spune care
+  este.
+- Detalii tehnice (structura depozitului, algoritmul, erorile): [`docs/architecture.md`](docs/architecture.md) §13.
+
+### Cum verifici manual o sincronizare reală
+
+Testele automate rulează împotriva unui GitHub simulat în memorie; autorii nu au folosit niciun token sau depozit
+real. Înainte să te bazezi pe sincronizare, parcurge:
+
+1. **Conectare**: cele cinci verificări apar cu ✓, iar aplicația spune că depozitul „nu conține încă date Pretometru”.
+2. **Prima sincronizare**: pe GitHub apare commitul „Prima sincronizare Pretometru (dispozitiv …)” cu fișierele din
+   `data/` (`pretometru.json`, `settings.json`, `categories/`, …). Deschide un fișier din `data/stores/`: o înregistrare
+   pe linie, doar ce ai introdus tu.
+3. **Al doilea dispozitiv** (sau alt profil de browser): conectează-l la același depozit. Aplicația spune că depozitul
+   „conține deja date”, iar după *Conectează și îmbină datele* vezi aceleași bonuri.
+4. **Modificări**: schimbă numele unui produs pe un dispozitiv, sincronizează, apoi sincronizează pe celălalt. Șterge
+   un bon și verifică să dispară și pe celălalt. Un *Sincronizează acum* fără modificări nu face niciun commit.
+5. **Rețea și CORS**: în DevTools → Network, toate cererile merg la `api.github.com` și răspund fără erori CORS (mai ales
+   `POST`, `PATCH` și `PUT` cu antetul `Authorization`).
+6. **Cazuri de eroare**:
+   - fă depozitul public pentru un moment: aplicația refuză („Depozitul este public”) și nu apare niciun commit nou;
+   - revocă tokenul: „GitHub nu acceptă tokenul”, iar sincronizarea automată se oprește până la o sincronizare manuală
+     reușită;
+   - un token cu *Contents: Read-only*: „Tokenul nu are voie să scrie în depozit”;
+   - mod avion: „Nu ești conectat la internet”;
+   - un depozit complet gol (fără README): aplicația adaugă singură un README;
+   - sincronizează în același timp de pe două dispozitive: amândouă ajung la aceleași date (un push respins se reia
+     singur).
+7. Dacă ceva nu merge, notează mesajul și codul erorii (de exemplu `REMOTE_INVALID`).
+
 ## Rulare locală
 
 Cerințe: Node.js `^22.22`, `^24` sau `>=26` (versiunea folosită în CI este în [`.nvmrc`](.nvmrc)) și npm.

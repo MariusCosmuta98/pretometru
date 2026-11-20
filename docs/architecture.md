@@ -761,6 +761,159 @@ Tests: `src/import/testing.ts` has fakes for the ports (`fakeEngines`, `fakePars
 database with a fixture's ground truth as the parser's answer. The flows drive import, review, an edited price and the
 confirmation for the Kaufland, METRO, Lidl and Mega Image fixtures.
 
+## 13. GitHub sync (`src/sync`, `src/features/sync`)
+
+The data is backed up in, and shared between devices through, a **private GitHub repository of the user's own**
+(`pretometru-data`, plan §2) that the app reads and writes straight from the browser with a fine-grained token limited
+to that repository (Contents: Read and write). Every sync is **one atomic commit** made with the Git Data API, so the
+Git history is the backup. `src/sync` is React-free; `src/features/sync` is a card of the Settings screen. Setting up
+the repository and the token is explained in the README and by the screen itself.
+
+```ts
+import { runSync, verifyConnection, saveConnection } from '@/sync';
+
+const check = await verifyConnection({ token, repo: 'pretometru-data' }, getSyncServices()); // nothing is saved yet
+await saveConnection(db, { owner: check.owner, repo: check.repo, token }, getSyncServices());
+const result = await runSync(); // { firstSync, pulled, pushed, commit, head, attempts, skipped, at }
+```
+
+| Module (`src/sync/`)  | What it holds                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `github.ts`           | the REST client over `fetch`: `createGitHubClient({ token, fetch })` -> `getUser()`, `repo(owner, name)` with `get`, `getBranchHead`, `getCommit`, `getTree`, `getBlob`, `createBlob`, `createTree`, `createCommit`, `updateBranch`, `createFile`; `parseRepoRef`, `tokenKind` |
+| `layout.ts`, `records.ts` | the layout of the repository (below): month buckets, `planShards`, `serializeShard`/`parseShard`, the manifest; `SyncRecord` and `overlay` (last write wins) |
+| `remote.ts`, `engine.ts` | reading the repository (`readRemote`, `downloadChanged`), and `syncNow({ db, repo, ... })`: pull -> merge -> push in one commit |
+| `verify.ts`           | `verifyConnection`: token, repository, private, may write, what it holds (used by the onboarding)       |
+| `connection.ts`, `vault.ts` | the connection and the token in `syncState`, with the optional passphrase (PBKDF2 + AES-GCM); `lockToken`/`unlockToken` |
+| `status.ts`, `runtime.ts`, `run.ts`, `services.ts` | the last result, `loadSyncView`, the in-memory "running" state, `runSync` (one at a time), the injectable services (`getSyncServices`, `setSyncServices({ fetch, getDb, now, ... })`) |
+| `auto.ts`             | automatic sync (below), started by `src/main.tsx` after the first render                                  |
+| `errors.ts`           | `SyncError` with a `code` (`SYNC_ERROR_CODES`); the screen turns codes into Romanian text                |
+| `testing.ts`          | **test-only**: `MockGitHub` (an in-memory api.github.com), `makeWorld`, `makeDevice`, `seedSample`, `at(iso)` |
+
+### Layout of the data repository
+
+```
+README.md                           written once, only to give an empty repository its first commit
+data/pretometru.json                { "format": "pretometru-data", "formatVersion": 1 }
+data/settings.json                  the portable settings (never a token or a key)
+data/<table>/<YYYY-MM>.json         stores, receipts, lines, products, aliases, categories, lists, listItems
+data/<table>/<YYYY-MM>.<X>.json     the same month split in parts, only for a month above 1,000,000 characters
+data/categories/seed.json           the built-in categories (their ids decode to time 0)
+```
+
+A shard is `{ "records": [ ... ] }` with **one record per line, sorted by id**, tombstones included; its records are
+exactly the backup's records (`docs/contracts.md`). The file of a record follows from its **id alone**: a ULID starts
+with its creation time, so the month is fixed for the record's whole life and an edit changes one line of one small
+file. Months keep files small, and a month that outgrows 1,000,000 characters is split by the first random character of
+the ids (at most 32 parts, each far below the API's 100 MB blob limit). The layout is a pure function of the record
+set (`planShards`): two devices that agree on the records agree on every byte, so identical data never makes a diff.
+Everything outside `data/` and every file under `data/` that is not one of ours is left untouched.
+`SYNC_FORMAT_VERSION` is bumped when a change cannot be read by an older app, which then refuses to sync instead of
+dropping what it does not understand (`REMOTE_NEWER`).
+
+### The sync algorithm (`syncNow`, one round)
+
+1. `GET /repos/{o}/{r}`: **refuse unless `private` is true** (and the repository is not archived); the default branch is
+   the branch that is synced. This happens on every sync, before anything else, so a repository made public later is
+   refused too.
+2. No commit yet (the Git Data API answers 409 on an empty repository): create `README.md` through the Contents API.
+3. Read the head commit, its tree (recursive; a truncated listing is `REMOTE_TOO_LARGE`) and the manifest.
+4. Export this device's records (`exportBackup`), plan their files and compute their **Git blob ids** (SHA-1 of
+   `blob <size>\0<content>`); download only the repository's files whose id differs (four at a time). Every record is
+   validated with the zod schemas: **one unreadable file or record stops the sync with nothing changed** (`REMOTE_INVALID`).
+5. **Merge**: `importBackup(db, downloaded, { mode: 'merge' })`: last write wins per record on `updatedAt` (a newer
+   tombstone deletes, a later edit beats an earlier deletion), in one transaction, **reconciling the lines of every
+   receipt it touched** (`reconcileReceiptLines`, §5) and re-creating missing seed categories. Sync does not re-implement
+   the merge; the storage layer is the only code that writes remote records into the database.
+6. **Compose** what the repository should hold: every record of both sides, the newer copy of each; on a tie the
+   repository's copy stays, which is what stops two devices overwriting each other forever. Records are never removed
+   from the repository (a deletion is a tombstone); a file that is no longer part of the plan (a record that sat in the
+   wrong file, a month that was split) is deleted in the same commit.
+7. Nothing to change (`changed`, `stale` and the manifest all empty): done, **no commit**. Otherwise create the blobs
+   (three at a time), a tree on top of the head's tree, a commit with the head as its parent, and update the branch
+   **without force**.
+8. A rejected ref update (422 "not a fast forward", or 409: another device pushed meanwhile) starts the round again from
+   the new head, up to 4 rounds with a short pause; then `CONFLICT`. Repeating a round is safe because the merge is
+   idempotent and everything pulled is already in the local database.
+
+Consequences worth knowing: the first sync of an empty repository is a push (`firstSync: true`), against a repository
+with data it is a merge; a failure after step 5 (rate limit, offline) keeps what was pulled and the next sync finishes
+the push; syncing twice in a row makes no second commit. The commit message is Romanian, for the user who reads the
+history on GitHub: `Sincronizare Pretometru (dispozitiv 7K3F9Q): 12 înregistrări`. Tombstones stay in the repository
+forever (`purgeTombstones` is never called by sync). Last write wins compares **device clocks** (`updatedAt`), so a
+device with a badly wrong clock can win or lose when it should not; a tie on the same millisecond keeps the
+repository's copy.
+
+### Token, safety and what is sent
+
+- The token lives only in `syncState` (key `sync.token`; `sync.connection` and `sync.status` hold the repository, the
+  device id and the last result), a table that is never exported, synced or part of a backup. With a passphrase it is
+  stored as `AES-256-GCM` under a `PBKDF2-SHA256` key (600,000 rounds, random salt and IV); the decrypted token only
+  exists in memory (`lockToken` is what an app restart does), and a protected token has to be unlocked once per start.
+  Disconnecting deletes the rows (a tombstone with `value: null`, so no copy stays on disk).
+- The only host is `api.github.com` (the CSP allows exactly it). Requests carry only `Authorization`, `Accept` and
+  `Content-Type`: the headers the plan's CORS check covered.
+  Requests use `cache: 'no-store'`: GitHub lets browsers cache GETs for a minute, and a sync must never act on a stale ref.
+  The in-memory GitHub of the tests records any other header, or another host, as a violation that fails the test.
+- A repository name is validated (`isValidRepoRef`) before it is put into an address, object ids must be 40 hex digits,
+  and no error or message ever contains the token.
+- A setting stays non-portable unless it is meant to sync (`SETTING_DEFINITIONS`); the repository's `settings.json` is
+  filtered the same way on the way in, so a planted key is ignored.
+- Write permission is proven without touching the history: an unreferenced blob is created (or, in an empty repository,
+  the README commit is the proof).
+
+### Errors
+
+`SyncError.code`; the screen shows Romanian text (`src/features/sync/messages.ts`) and the status keeps the last code.
+`isBlockingCode` marks what retrying cannot fix (`BAD_TOKEN`, `NO_ACCESS`, `NO_PERMISSION`, `REPO_NOT_PRIVATE`,
+`REPO_ARCHIVED`, `BRANCH_PROTECTED`, `EMPTY_REPOSITORY`, `INVALID_REPO`, `REMOTE_INVALID`, `REMOTE_NEWER`,
+`REMOTE_TOO_LARGE`, `NOT_CONFIGURED`). The others are `OFFLINE`, `NETWORK`, `RATE_LIMITED` (with `retryAt`, from
+`Retry-After` or `X-RateLimit-Reset`), `SERVER`, `CONFLICT`, `STORAGE`, `CANCELLED`, `TOKEN_LOCKED`, `BAD_PASSPHRASE`,
+`CRYPTO_UNAVAILABLE` and `UNEXPECTED`. A missing connection or a locked token is not a failed attempt and is not recorded.
+
+### Automatic sync (`src/sync/auto.ts`)
+
+Worth having because the sync is also the backup (plan risk 3) and because syncing by hand on every device is what
+people forget. It is deliberately small: `startAutoSync()` (called from `src/main.tsx` after the first render, loaded
+lazily) attempts a sync **3 s after the app starts, when the user comes back to the app** (if the last attempt is older
+than 5 minutes), **when the device is back online** and **30 s after the last change of the local data** (a live query
+on the newest `updatedAt`; a burst of edits is sent once, and nothing is sent when nothing is newer than the last
+sync). It runs only when sync is set up with automatic sync on, the device is online and the token is usable, never
+closer than 10 s after the previous attempt, and never in a retry loop: after an error that retrying cannot fix it stops
+until a manual sync succeeds (the screen says so), after a rate limit it waits for the time GitHub gave. Automatic and
+manual runs share `runSync`, which runs one sync at a time and lets a second caller join it.
+
+### The Settings section (`src/features/sync`)
+
+`feature.ts` has no route; it contributes the card "Sincronizare GitHub" (`order: 500`). Unconnected: the instructions
+(a private `pretometru-data` with a README, a fine-grained token on that repository only with Contents: Read and
+write), the token and repository fields, an optional passphrase, "Verifică conexiunea" (a checklist: token, repository,
+private, may read and write, contents), what the first sync will do (upload an empty repository, **merge** one that has
+data), a warning for a classic token, and the button that saves and runs the first sync. Connected: the repository, the
+last successful sync with its counts, what waits to be sent, "Sincronizează acum" (disabled while running or locked),
+the automatic-sync switch, the passphrase prompt of a locked token, "Schimbă tokenul" and a confirmed "Deconectează".
+Every failure has its own Romanian message (bad token, no access, repository not private, rate limit with the time to
+retry, offline, a branch that keeps moving, ...). The section reads its state with a Dexie live query and the running
+state from `src/sync/runtime.ts`, so it follows a sync that automatic sync started.
+
+### Tests
+
+Everything runs against `MockGitHub` (`src/sync/testing.ts`): users, tokens with `write`/`read`/`metadata` access,
+repositories (private or public, archived, with or without a first commit), the Git Data API with real Git object ids,
+fast-forward checks, and switches to break things on purpose (`setOffline`, `failNext(match, reply)`, `before(match,
+action)` to let another device push between two requests of a sync, `limitTrees`). `makeDevice` is a database of its own
+that syncs as a user; `seedSample` fills one. The suites cover the first push, pull and merge, last write wins, ties,
+tombstones, line reconciliation of a receipt re-saved on two devices, a rejected ref update followed by a retry (and
+giving up), the private-only rule, token and permission errors, rate limits, offline, unreadable or newer repository
+data, files that are not ours, re-sharding, the token never reaching a backup or the repository, and the whole
+onboarding through the Settings screen. A repository on the real GitHub was **not** available to the authors: the
+README lists what to check by hand. The Settings tests need the global IndexedDB (`import 'fake-indexeddb/auto'`, for
+Dexie's live queries) and call `resetRunSync()` between tests so that a hung sync cannot block the next one.
+
+Assumptions about GitHub that only a real token can confirm: an empty repository answers 409 to Git Data calls and
+accepts a Contents `PUT` as its first commit; blob content comes back as base64 with line breaks; the CORS policy of
+`api.github.com` exposes `Retry-After` and `X-RateLimit-Reset` (otherwise `retryAt` falls back to one minute) and allows
+`GET`, `POST`, `PATCH` and `PUT` with the three headers above.
+
 ## 14. Offline, persistence and sharing (`src/pwa`, `src/features/offline`, `e2e/`)
 
 After the first load the whole app works offline: the shell, every route chunk and the data (IndexedDB) need no network.
