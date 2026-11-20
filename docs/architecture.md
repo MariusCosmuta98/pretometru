@@ -34,7 +34,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/import/`                | file -> engine -> parser -> `ParsedReceipt` -> storage orchestration | `import-review-ui`                    |
 | `src/import/pdf/`            | pdf.js adapter: `extractPdfText(ArrayBuffer)` -> `ReceiptSource`; the only importer of `pdfjs-dist`, worker bundled locally and loaded lazily | `parsers-pdf-text` (the rest of `src/import/` is `import-review-ui`) |
 | `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), auto-categories, merge/split (§5a) | `catalog-matching`                    |
-| `src/analytics/`             | price observations, unit price, cheapest store, trends               | `price-analytics`                     |
+| `src/analytics/`             | price observations, unit price, cheapest store, trends (§5b)         | `price-analytics`                     |
 | `src/sync/`                  | GitHub sync (LWW + tombstones)                                       | `sync-github`                         |
 | `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
 | `src/pwa/`                   | service worker registration, update prompt, offline/share-target     | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
@@ -238,6 +238,46 @@ IGIENICA" becomes 2,00 lei per roll once the alias knows it is 8 rolls.
 **Merge and split keep one rule: a printed name has one product.** `mergeProducts` and `splitProduct` set the moved
 lines' `categoryId` to the target's category (a line with a product takes the product's category) and move the
 aliases with them, so the next import of the same printed name follows the user's decision.
+
+**Category hints.** `categoryForHint` reads the first department a header names ("Drogerie/Gospodărie/Hrană animale/Tabac"
+is Curățenie & menaj); generic qualifiers (`Alimente`, `Nonfood`) only count when nothing more specific is named, and a
+header that is too broad ("Delicatese/Convenience/Marinade") stays open. Every header of the Kaufland fixture is pinned
+in `category-hints.test.ts`.
+
+## 5b. Price analytics (`src/analytics`, import from `@/analytics`)
+
+React-free. Turns confirmed receipts into price observations and answers "where is it cheapest?" (plan §7).
+
+```ts
+import { getProductSummary, listProductSummaries } from '@/analytics';
+
+const summary = await getProductSummary(db, productId); // window and sale filter come from the settings
+const rows = await listProductSummaries(db, { now, days: 30, excludeSales: true }); // every live product
+```
+
+| Function                                                | Purpose                                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `loadObservations(db, productIds?)`                     | `Map<productId, PriceObservation[]>` (oldest first) from the live lines of confirmed receipts |
+| `toObservations({ lines, receipts, stores })`           | the pure core of the above                                                                  |
+| `cheapestPerStore(observations, { baseUnit, now, days?, excludeSales? })` | per store the lowest price in the last N days with its date, cheapest store first      |
+| `priceChange(observations)`                             | trend and Δ: the latest price against the previous purchase **at the same store**           |
+| `summarizeProduct(product, observations, options)`      | everything a product screen shows (pure)                                                     |
+| `getProductSummary(db, id, options?)` / `listProductSummaries(db, options?)` | the same from the database; `options` default to the `priceWindowDays` and `excludeDiscountedPrices` settings and the clock |
+
+Rules (each is covered by a test):
+
+- **What counts**: live `product` lines of live, `confirmed`, dated receipts, with a product and a positive price.
+  Deposits, bags, discounts and fees never count (plan §7.5); they still count towards the receipt total.
+- **Per base unit**: prices are compared only within the product's `baseUnit`. A purchase in another unit (usually a line
+  without a pack size) is reported as `incomparable` instead of being mixed in.
+- **Window**: purchases from `today - days` onwards (default 90, today = the Bucharest day of `now`); a receipt dated in the
+  future counts as the latest. A store last used before the window stays in `stores` without a `best`, for reference.
+- **Sale prices**: `onSale` = the line has `discountBani > 0`; the price already includes the discount. `excludeSales`
+  removes them from the comparison, the cheapest store and the trend, never from the history and chart.
+- **Only at X**: `onlyAt` is set when every purchase ever was at one store (no comparison, plan §7.6).
+- **Δ and trend**: `change = { from, to, deltaMilliBani, pct, direction }`; under 0,5 % is `flat`. Buying at another store in
+  between is not a price move.
+- Money stays integer milli-bani; only the percentages are floats (ratios).
 
 ## 6. Build, PWA and CSP
 
