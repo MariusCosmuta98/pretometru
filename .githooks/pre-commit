@@ -1,0 +1,9 @@
+#!/bin/sh
+# Blocks a commit that stages personal data or credentials (plan §11). Installed by `npm install`
+# (the `prepare` script points core.hooksPath here). Bypass only with --no-verify, never to commit
+# a real receipt.
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found on PATH, cannot run the leak check" >&2
+  exit 1
+fi
+exec node scripts/check-leaks.ts --staged
