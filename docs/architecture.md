@@ -915,9 +915,9 @@ const result = await runSync(); // { firstSync, pulled, pushed, commit, head, at
 | `remote.ts`, `engine.ts` | reading the repository (`readRemote`, `downloadChanged`), and `syncNow({ db, repo, ... })`: pull -> merge -> push in one commit |
 | `verify.ts`           | `verifyConnection`: token, repository, private, may write, what it holds (used by the onboarding)       |
 | `connection.ts`, `vault.ts` | the connection and the token in `syncState`, with the optional passphrase (PBKDF2 + AES-GCM); `lockToken`/`unlockToken` |
-| `status.ts`, `runtime.ts`, `run.ts`, `services.ts` | the last result, `loadSyncView`, the in-memory "running" state, `runSync` (one at a time), the injectable services (`getSyncServices`, `setSyncServices({ fetch, getDb, now, ... })`) |
+| `status.ts`, `runtime.ts`, `run.ts`, `services.ts` | the last result, `loadSyncView`, the in-memory runtime (`running`, the phase, `lastAttempt`: how the sync that ended last came out), `currentFailure`, `runSync` (one at a time), the injectable services (`getSyncServices`, `setSyncServices({ fetch, getDb, now, ... })`) |
 | `auto.ts`             | automatic sync (below), started by `src/main.tsx` after the first render                                  |
-| `errors.ts`           | `SyncError` with a `code` (`SYNC_ERROR_CODES`); the screen turns codes into Romanian text                |
+| `errors.ts`           | `SyncError` with a `code` (`SYNC_ERROR_CODES`), `SyncFailure`/`describeFailure` (a failure as plain data); the screen turns codes into Romanian text |
 | `mock-github.ts`      | **test-only**: `MockGitHub`, an in-memory api.github.com (no `@/` import, so a browser test can use it too)  |
 | `testing.ts`          | **test-only**: `makeWorld`, `makeDevice`, `seedSample`, `at(iso)` (and re-exports `MockGitHub`)           |
 
@@ -1027,6 +1027,15 @@ Every failure has its own Romanian message (bad token, no access, repository not
 retry, offline, a branch that keeps moving, ...). The section reads its state with a Dexie live query and the running
 state from `src/sync/runtime.ts`, so it follows a sync that automatic sync started.
 
+**One value for the failure.** What a screen says about the last sync comes from two places that are not equally fast: the
+runtime (`lastAttempt`, set in the same update that ends `running`, whoever started the sync: the button, automatic
+sync, the onboarding) and the stored status, which reaches the screen through the live query a moment after it is
+written (and is the only witness after a restart or of another tab). `currentFailure(status, lastAttempt)` picks the
+newer of the two (a tie goes to the session: it is the same sync) and the panel derives **both** the alert and the note
+"Sincronizarea automată este oprită…" from that one value, so they appear together and a later success (from any
+trigger) removes a failure that an earlier sync left. `saveConnection` and `disconnect` reset `lastAttempt`: it was
+about the old connection. A screen must not keep a failure of its own in component state for the same reason.
+
 ### Tests
 
 Everything runs against `MockGitHub` (`src/sync/mock-github.ts`): users, tokens with `write`/`read`/`metadata` access,
@@ -1045,8 +1054,18 @@ gate that exists from the start of the test (not by a variable the hook sets), a
 `MockGitHub.dispose()` (held and later requests fail at once), `await resetRunSync()` (waits for the sync they belonged to),
 resets the services, the runtime and the token, and deletes the test database. The Settings tests need the global
 IndexedDB (`import 'fake-indexeddb/auto'`, for Dexie's live queries); their waits use `WAIT`/`within`/`waitFor` from
-`src/features/sync/testing.tsx`, so none depends on a global Testing Library timeout. Slowing every request by 150 ms is a
-quick way to find a timing assumption.
+`src/features/sync/testing.tsx`, so none depends on a global Testing Library timeout.
+
+The stored state reaches the screen **late** (written, then read back by a live query), so a test that checks something
+derived from it right after waiting for something else (an alert that the sync itself raised, say) is racing the live
+query; it passes on a quiet machine and fails on a busy one. Wait for the thing that is checked (`findBy…`/`waitFor`),
+or check what the screen shows when it has only the stored state (`harness.restart()` closes the app and opens
+Settings again). To pin an order that must not depend on that delay, `harness.slowReads(ms)` makes the reads outside
+transactions slow from then on (a Dexie middleware; the application code is the real one). Two switches turn the
+whole file into a stress test, both off unless set: `VITE_SYNC_TEST_LATENCY_MS=150` delays every request of `MockGitHub`
+(`setLatency`) and `VITE_SYNC_TEST_READ_DELAY_MS=150` every such read, e.g.
+`VITE_SYNC_TEST_LATENCY_MS=150 npx vitest run src/features/sync`. Run a few of those concurrently when a test is
+suspected of being flaky.
 
 **Browser check.** `e2e/sync.spec.ts` (`E2E_CHANNEL=chrome npx playwright test e2e/sync.spec.ts` after `npm run build`; not
 part of `check` or CI, like the other e2e specs, §14) runs the **production build** in Chrome with `api.github.com`
