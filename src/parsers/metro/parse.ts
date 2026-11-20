@@ -1,7 +1,6 @@
 import {
   grossFromNet,
   mulDiv,
-  parseBani,
   parsePackSize,
   type ParsedLine,
   type ParsedReceipt,
@@ -9,7 +8,7 @@ import {
 } from '@/domain';
 import { lineKindOf } from '../line-kind';
 import { pdfRows, type PdfCell, type PdfRow, type PdfTextSource } from '../pdf-rows';
-import { parseQuantity, toPurchasedAt } from '../text';
+import { parseAmount, parseQuantity, toPurchasedAt } from '../text';
 
 export const METRO_VERSION = '1.0.0';
 
@@ -122,14 +121,14 @@ function readProductRow(row: PdfRow, idx: number): ParsedRow | undefined {
   const at = (index: number) => numbers[index] ?? '';
   const offset = hasDiscount ? 1 : 0;
 
-  const priceNet = parseBani(at(0));
+  const priceNet = parseAmount(at(0));
   const qty = parseQuantity(at(1));
-  const valueNet = parseBani(at(2));
-  const discountNet = hasDiscount ? parseBani(at(3)) : 0;
-  const discountedNet = parseBani(at(3 + offset));
+  const valueNet = parseAmount(at(2));
+  const discountNet = hasDiscount ? parseAmount(at(3)) : 0;
+  const discountedNet = parseAmount(at(3 + offset));
   const vatText = at(4 + offset);
-  const vatRate = /^\d+$/.test(vatText) ? Number(vatText) : undefined;
-  const lineTotalBani = parseBani(at(5 + offset));
+  const vatRate = /^\d{1,3}$/.test(vatText) && Number(vatText) <= 100 ? Number(vatText) : undefined;
+  const lineTotalBani = parseAmount(at(5 + offset));
   const unitsSold = parseQuantity(at(6 + offset));
 
   const { ean, name, unit } = readHead(head);
@@ -233,12 +232,13 @@ interface VatEntry {
 function readVatRow(row: PdfRow): VatEntry | undefined {
   const texts = row.cells.map((cell) => cell.text);
   const at = texts.findIndex((text) => VAT_RATE_CELL.test(text));
-  const rate = at < 0 ? undefined : VAT_RATE_CELL.exec(texts[at] ?? '')?.[1];
-  if (rate === undefined) return undefined;
-  const entry: VatEntry = { rate: Number(rate.replace(',', '.')) };
-  const net = parseBani(texts[at - 1] ?? '');
-  const vat = parseBani(texts[at + 1] ?? '');
-  const gross = parseBani(texts[at + 2] ?? '');
+  const printed = at < 0 ? undefined : VAT_RATE_CELL.exec(texts[at] ?? '')?.[1];
+  const rate = printed === undefined ? NaN : Number(printed.replace(',', '.'));
+  if (!(rate >= 0 && rate <= 100)) return undefined;
+  const entry: VatEntry = { rate };
+  const net = parseAmount(texts[at - 1] ?? '');
+  const vat = parseAmount(texts[at + 1] ?? '');
+  const gross = parseAmount(texts[at + 2] ?? '');
   if (net !== undefined) entry.netBani = net;
   if (vat !== undefined) entry.vatBani = vat;
   if (gross !== undefined) entry.grossBani = gross;
@@ -267,7 +267,7 @@ function readInvoiceGross(rows: PdfRow[], from: number): number | undefined {
   for (const row of rows.slice(from, from + 6)) {
     const texts = row.cells.map((cell) => cell.text);
     if (texts.at(-1)?.toUpperCase() !== 'LEI') continue;
-    const amounts = texts.slice(0, -1).map((text) => parseBani(text));
+    const amounts = texts.slice(0, -1).map((text) => parseAmount(text));
     if (amounts.length === 3) return amounts[2];
   }
   return undefined;
@@ -277,7 +277,7 @@ function readInvoiceGross(rows: PdfRow[], from: number): number | undefined {
 function readPayable(rows: PdfRow[]): number | undefined {
   const row = rows.findLast((candidate) => PAYABLE_LABEL.test(candidate.text));
   for (const cell of [...(row?.cells ?? [])].reverse()) {
-    const bani = parseBani(cell.text);
+    const bani = parseAmount(cell.text);
     if (bani !== undefined) return bani;
   }
   return undefined;

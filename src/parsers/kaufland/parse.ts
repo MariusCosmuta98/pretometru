@@ -1,13 +1,7 @@
-import {
-  parseBani,
-  parsePackSize,
-  type ParsedLine,
-  type ParsedReceipt,
-  type ParseWarning,
-} from '@/domain';
+import { parsePackSize, type ParsedLine, type ParsedReceipt, type ParseWarning } from '@/domain';
 import { lineKindOf } from '../line-kind';
 import { pdfRows, type PdfCell, type PdfRow, type PdfTextSource } from '../pdf-rows';
-import { parseQuantity, toPurchasedAt } from '../text';
+import { parseAmount, parseQuantity, toPurchasedAt } from '../text';
 
 export const KAUFLAND_VERSION = '1.0.0';
 
@@ -34,7 +28,7 @@ interface Amount {
 
 function readAmount(text: string): Amount | undefined {
   const match = AMOUNT_WITH_CLASS.exec(text);
-  const bani = match?.[1] === undefined ? undefined : parseBani(match[1]);
+  const bani = match?.[1] === undefined ? undefined : parseAmount(match[1]);
   if (bani === undefined) return undefined;
   return match?.[2] === undefined ? { bani } : { bani, vatClass: match[2] };
 }
@@ -65,7 +59,7 @@ function readDetail(text: string): Detail | undefined {
   const multiple = MULTIPLE.exec(text);
   if (multiple?.[1] !== undefined && multiple[2] !== undefined) {
     const qty = Number(multiple[1]);
-    const unitPriceBani = parseBani(multiple[2]);
+    const unitPriceBani = parseAmount(multiple[2]);
     const valid = unitPriceBani !== undefined && qty > 0 && qty <= 1_000_000;
     return valid ? { type: 'multiple', qty, unitPriceBani } : undefined;
   }
@@ -181,9 +175,11 @@ function readVatTable(rows: PdfRow[], headerAt: number): Map<string, VatEntry> {
   for (const row of rows.slice(headerAt + 1)) {
     const label = VAT_CLASS_ROW.exec(labelOf(row));
     if (!label?.[1] || label[2] === undefined) break;
-    const entry: VatEntry = { rate: Number(label[2].replace(',', '.')) };
+    const rate = Number(label[2].replace(',', '.'));
+    if (!(rate >= 0 && rate <= 100)) break;
+    const entry: VatEntry = { rate };
     row.cells.slice(1).forEach((cell, column) => {
-      const bani = parseBani(cell.text);
+      const bani = parseAmount(cell.text);
       if (bani === undefined) return;
       const name = order[column];
       if (name === 'brut') entry.grossBani = bani;

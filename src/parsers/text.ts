@@ -1,11 +1,23 @@
-import { parsePurchasedAt } from '@/domain';
+import { BaniSchema, MAX_QTY, parseBani, parsePurchasedAt } from '@/domain';
 
-/** `0,920` or `0.920` -> `0.92`: a quantity with up to 3 decimals; `undefined` for anything else. */
+/**
+ * `parseBani` for the amounts the contract can hold (±10,000,000 RON): a larger one is a runaway
+ * read (a lost decimal mark, a merged column), not data, so it counts as unreadable.
+ */
+export function parseAmount(text: string): number | undefined {
+  const bani = parseBani(text);
+  return bani !== undefined && BaniSchema.safeParse(bani).success ? bani : undefined;
+}
+
+/**
+ * `0,920` or `0.920` -> `0.92`: a quantity with up to 3 decimals, positive and within the
+ * contract's bound; `undefined` for anything else.
+ */
 export function parseQuantity(text: string): number | undefined {
   const match = /^(\d+)(?:[.,](\d{1,3}))?$/.exec(text.trim());
   if (!match) return undefined;
   const value = Number(`${match[1]}.${match[2] ?? '0'}`);
-  return value > 0 && Number.isFinite(value) ? value : undefined;
+  return value > 0 && value <= MAX_QTY ? value : undefined;
 }
 
 /**
