@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { StrictMode } from 'react';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { features } from '@/app/features';
 import { buildRoutes } from '@/app/routes';
 import { clearReviewSessions, ImportError, resetImportServices, setImportServices } from '@/import';
@@ -25,6 +25,9 @@ import { ensureSeed, listActive, type PretometruDB } from '@/storage';
 import { createTestDb } from '@/storage/testing';
 
 let db: PretometruDB;
+
+// Load the screens once, outside the time budget of the first `findBy`.
+beforeAll(() => import('./AddReceiptScreen'));
 
 beforeEach(async () => {
   db = await createTestDb();
@@ -221,7 +224,10 @@ describe('add receipt', () => {
     expect(within(results).getByText(/Format nesuportat/)).toBeTruthy();
     // The same receipt twice: the second one is flagged.
     expect(within(results).getAllByText(/pare un duplicat/).length).toBeGreaterThan(0);
-    expect(document.activeElement).toBe(results);
+    // The focus moves to the results once their commit has run its effects.
+    await waitFor(() => {
+      expect(document.activeElement).toBe(results);
+    });
     // With several files the user stays here to pick which one to open.
     expect(router.state.location.pathname).toBe('/adauga');
     expect(await listActive(db.receipts)).toHaveLength(3);

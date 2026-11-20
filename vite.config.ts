@@ -88,6 +88,10 @@ export default defineConfig(({ mode }) => {
         'config/**/*.test.ts',
         'scripts/**/*.test.ts',
       ],
+      // Testing Library waits 5 s instead of 1 s in component tests (see the file).
+      setupFiles: ['./tests/setup.ts'],
+      // Headroom above those waits: a component test chains several of them on a busy machine.
+      testTimeout: 15_000,
     },
   };
 });

@@ -432,6 +432,12 @@ with sale prices excluded. The screens have jsdom tests like the product screens
 - Default environment is `node`. DOM tests start with `// @vitest-environment jsdom` and call `cleanup` in
   `afterEach`. Prefer real code over mocks; build tooling is tested with real Vite builds (`config/csp.test.ts`).
 - Anything time-dependent takes an injectable `now` (the Lidl sample is dated in the future).
+- Component tests are robust under CPU load (several vitest runs at once, busy CI runners): `tests/setup.ts`
+  (`setupFiles` in `vite.config.ts`) gives Testing Library's `findBy*`/`waitFor` a 5 s budget instead of 1 s and
+  `testTimeout` is 15 s, so do not add per-assertion timeouts. Wait for effects instead of asserting right after
+  an `await findBy*` (focus: `expectFocus` in `src/features/receipts/testing.tsx`), and load the lazy route modules a
+  test needs in `beforeAll` (`warmRoutes(...featureIds)` in the same file) so the first test of a file does not pay
+  for them inside a `findBy*` budget.
 - Run one file: `npx vitest run src/app/registry.test.ts`.
 
 ### Fixtures (`tests/fixtures`)

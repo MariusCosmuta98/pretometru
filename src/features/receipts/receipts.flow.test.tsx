@@ -5,7 +5,7 @@ import type { ParsedReceipt } from '@/domain';
 import { clearReviewSessions } from '@/import';
 import { pngFile } from '@/import/testing';
 import { getReceiptWithLines, listActive } from '@/storage';
-import { appHarness, change, click, field, goTo, importPdf } from './testing';
+import { appHarness, change, click, expectFocus, field, goTo, importPdf } from './testing';
 
 const app = appHarness();
 
@@ -81,11 +81,12 @@ describe('import -> review -> edit a price -> confirm (Kaufland)', () => {
     expect(
       within(summary).getByText('Confirmă diferența dintre suma liniilor și total.'),
     ).toBeTruthy();
-    expect(document.activeElement).toBe(
-      screen.getByLabelText('Confirm că diferența de 0,10 lei față de total este corectă'),
+    const accept = screen.getByLabelText<HTMLInputElement>(
+      'Confirm că diferența de 0,10 lei față de total este corectă',
     );
+    await expectFocus(accept);
 
-    fireEvent.click(document.activeElement as HTMLElement);
+    fireEvent.click(accept);
     click('Confirmă bonul');
     expect(await screen.findByText('Bonul a fost confirmat.')).toBeTruthy();
     expect((await listActive(app.db.receipts))[0]).toMatchObject({
@@ -116,7 +117,7 @@ describe('a date in the future (Lidl)', () => {
     const summary = await screen.findByRole('alert');
     expect(within(summary).getByText('Confirmă că data din viitor este corectă.')).toBeTruthy();
     const accept = screen.getByLabelText('Confirm că data bonului (29.12.2026 17:12) este corectă');
-    expect(document.activeElement).toBe(accept);
+    await expectFocus(accept);
     expect((await listActive(app.db.receipts))[0]?.status).toBe('draft');
 
     fireEvent.click(accept);
@@ -169,7 +170,7 @@ describe('a receipt that is already stored', () => {
     // The user decides it is the same receipt and deletes the copy.
     click('Șterge bonul');
     const dialog = await screen.findByRole('dialog', { name: 'Ștergi bonul?' });
-    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Renunță' }));
+    await expectFocus(within(dialog).getByRole('button', { name: 'Renunță' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Șterge definitiv' }));
 
     expect(await screen.findByText('Bonul a fost șters.')).toBeTruthy();
@@ -191,7 +192,7 @@ describe('a receipt that is already stored', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
-    expect(document.activeElement).toBe(trigger);
+    await expectFocus(trigger);
     expect(await listActive(app.db.receipts)).toHaveLength(1);
   });
 });

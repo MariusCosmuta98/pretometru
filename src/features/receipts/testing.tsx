@@ -4,10 +4,10 @@
  * Never import this from application code.
  */
 import { getFixture, sourceOf } from '@fixtures';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
-import { afterEach, beforeEach, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
 import { features } from '@/app/features';
 import { buildRoutes } from '@/app/routes';
 import type { ParsedReceipt } from '@/domain';
@@ -41,12 +41,27 @@ export interface Installed {
 }
 
 /**
+ * Evaluates the lazy route modules of the given features once. The first test of a file would
+ * otherwise pay for loading its screens inside a `findBy` time budget, which a busy machine can
+ * exhaust.
+ */
+export async function warmRoutes(...featureIds: string[]): Promise<void> {
+  const routes = features
+    .filter((feature) => featureIds.includes(feature.id))
+    .flatMap((feature) => feature.routes);
+  await Promise.all(
+    routes.flatMap((route) => (typeof route.lazy === 'function' ? [route.lazy()] : [])),
+  );
+}
+
+/**
  * Call at the top of a test file: gives every test a fresh seeded database and resets the import
  * services afterwards.
  */
 export function appHarness() {
   let db: PretometruDB | undefined;
 
+  beforeAll(() => warmRoutes('add-receipt', 'receipts'));
   beforeEach(async () => {
     db = await createTestDb();
     await ensureSeed(db);
@@ -109,6 +124,13 @@ export function change(name: string, value: string) {
 
 export function click(name: string | RegExp, role: 'button' | 'link' = 'button') {
   fireEvent.click(screen.getByRole(role, { name }));
+}
+
+/** Focus follows a commit by an effect, so wait for it instead of asserting right after a `findBy`. */
+export async function expectFocus(element: HTMLElement) {
+  await waitFor(() => {
+    expect(document.activeElement).toBe(element);
+  });
 }
 
 export async function goTo(router: AppRouter, path: string) {

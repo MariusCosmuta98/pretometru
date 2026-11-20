@@ -9,6 +9,7 @@ import {
   appHarness,
   change,
   click,
+  expectFocus,
   field,
   goTo,
   importPdf,
@@ -245,7 +246,7 @@ describe('a receipt typed in by hand', () => {
       within(summary).getByText('Totalul bonului: Totalul trebuie să fie mai mare ca 0.'),
     ).toBeTruthy();
     expect(within(summary).getByText('Adaugă cel puțin o linie.')).toBeTruthy();
-    expect(document.activeElement).toBe(field('Total bon (lei)'));
+    await expectFocus(field('Total bon (lei)'));
 
     change('Magazin', 'lidl');
     change('Total bon (lei)', '12,5');
@@ -253,7 +254,7 @@ describe('a receipt typed in by hand', () => {
     expect(field('Total bon (lei)').value).toBe('12,50');
 
     click('Adaugă linie');
-    expect(document.activeElement).toBe(field('Denumire, linia 1'));
+    await expectFocus(field('Denumire, linia 1'));
     change('Denumire, linia 1', 'Lapte');
     change('Total linie (lei), linia 1', '12,50');
     click('Confirmă bonul');
