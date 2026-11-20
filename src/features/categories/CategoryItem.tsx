@@ -117,32 +117,34 @@ export function CategoryItem({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {system ? null : (
           <>
             <button
               type="button"
               id={moveButtonId(category.id, 'up')}
               aria-label={`Mută „${category.name}” mai sus`}
-              className={buttonQuiet}
+              title="Mai sus"
+              className={`${buttonQuiet} w-11 !px-0 text-lg`}
               disabled={position === 0}
               onClick={() => {
                 void move('up');
               }}
             >
-              ↑ Mai sus
+              ↑
             </button>
             <button
               type="button"
               id={moveButtonId(category.id, 'down')}
               aria-label={`Mută „${category.name}” mai jos`}
-              className={buttonQuiet}
+              title="Mai jos"
+              className={`${buttonQuiet} w-11 !px-0 text-lg`}
               disabled={position === orderable - 1}
               onClick={() => {
                 void move('down');
               }}
             >
-              ↓ Mai jos
+              ↓
             </button>
           </>
         )}
@@ -150,7 +152,7 @@ export function CategoryItem({
           type="button"
           id={editButtonId(category.id)}
           aria-label={`Editează categoria „${category.name}”`}
-          className={buttonQuiet}
+          className={system ? buttonQuiet : `${buttonQuiet} ml-auto`}
           onClick={() => {
             setRemoveError(undefined);
             setPanel({ kind: 'edit', id: category.id });

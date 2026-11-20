@@ -1057,6 +1057,7 @@ photo of the Lidl text; `seed.ts`: price history written into IndexedDB), so not
 | `share-target.spec.ts` | the manifest has no Chrome errors; a share POST imports (also offline); several files are listed; an empty or expired share leaves the screen usable |
 | `update.spec.ts` | an update installs in the background, the page and a reload stay on the old version until "Actualizează", the engine caches survive, the new version works offline |
 | `persistence.spec.ts` | state and retry in Settings; the ask happens once after the first confirmed receipt and later visits do not even load the watcher |
+| `admin.spec.ts` | Settings shows the Categorii, Magazine and Copie de siguranță cards and both screens open; an export downloads a dated `*.pretometru-backup.json` that imports back (preview, merge, replace after its question; a newer format and a non-backup are refused in Romanian) with no request leaving the origin and no console or CSP error; deleting a category moves its products (the product list shows them in the new one); merging two stores moves the receipts (§15) |
 
 ### Limits
 
