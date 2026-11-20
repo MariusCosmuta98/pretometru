@@ -1,4 +1,5 @@
 import {
+  describeFailure,
   isSyncError,
   type RemoteSummary,
   type SyncErrorCode,
@@ -17,16 +18,7 @@ export interface Failure {
 }
 
 export function toFailure(error: unknown): Failure {
-  if (!isSyncError(error)) return { code: 'UNKNOWN' };
-  const retryAt =
-    error.retryAt && !Number.isNaN(error.retryAt.getTime())
-      ? error.retryAt.toISOString()
-      : undefined;
-  return {
-    code: error.code,
-    ...(error.detail ? { detail: error.detail } : {}),
-    ...(retryAt ? { retryAt } : {}),
-  };
+  return isSyncError(error) ? describeFailure(error) : { code: 'UNKNOWN' };
 }
 
 export const ERROR_MESSAGES: Record<SyncErrorCode | 'UNKNOWN', string> = {

@@ -18,13 +18,14 @@ import {
   type SelectorMatcherOptions,
   type waitForOptions,
 } from '@testing-library/react';
+import type { DBCore, DBCoreTable } from 'dexie';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, expect } from 'vitest';
 import { features } from '@/app/features';
 import { buildRoutes } from '@/app/routes';
 import { ensureSeed, type PretometruDB } from '@/storage';
-import { createTestDb } from '@/storage/testing';
+import { testDb } from '@/storage/testing';
 import {
   lockToken,
   resetRunSync,
@@ -74,11 +75,51 @@ const present = <T,>(value: T | undefined, what: string): T => {
   return value;
 };
 
+/** How much later every read of the database answers: 0 is untouched. */
+interface ReadDelay {
+  ms: number;
+}
+
+/**
+ * Lets the reads of `db` be slowed down on demand (a Dexie middleware, so the application code is
+ * the real one): the stored state then reaches a screen late, as it can on a busy device. Writes
+ * are not slowed, so a change is stored at once and only read back late.
+ */
+function slowable(db: PretometruDB, delay: ReadDelay): PretometruDB {
+  const later = <T,>(result: Promise<T>): Promise<T> =>
+    delay.ms <= 0
+      ? result
+      : result.then(async (value) => {
+          await new Promise((resolve) => setTimeout(resolve, delay.ms));
+          return value;
+        });
+
+  db.use({
+    stack: 'dbcore',
+    name: 'slow-reads',
+    create: (down: DBCore) => ({
+      table: (name: string): DBCoreTable => {
+        const table = down.table(name);
+        return {
+          ...table,
+          get: (request) => later(table.get(request)),
+          getMany: (request) => later(table.getMany(request)),
+          query: (request) => later(table.query(request)),
+          count: (request) => later(table.count(request)),
+          openCursor: (request) => later(table.openCursor(request)),
+        };
+      },
+    }),
+  });
+  return db;
+}
+
 /** Call at the top of a test file: every test gets a fresh database and a fresh in-memory GitHub. */
 export function syncHarness() {
   let db: PretometruDB | undefined;
   let github: MockGitHub | undefined;
   let overrides: Partial<SyncServices> = {};
+  let delay: ReadDelay = { ms: 0 };
 
   function install(more: Partial<SyncServices> = {}) {
     overrides = { ...overrides, ...more };
@@ -95,7 +136,9 @@ export function syncHarness() {
 
   beforeEach(async () => {
     overrides = {};
-    db = await createTestDb();
+    delay = { ms: 0 };
+    db = slowable(testDb(), delay);
+    await db.open();
     await ensureSeed(db);
     github = await makeWorld();
     install();
@@ -104,6 +147,7 @@ export function syncHarness() {
     // End the world first: a request a failed test left held fails now, so the sync it belongs to
     // ends and can neither block nor disturb the next test.
     github?.dispose();
+    delay.ms = 0;
     await resetRunSync();
     cleanup();
     resetSyncServices();
@@ -113,6 +157,16 @@ export function syncHarness() {
     // Nothing the section sent may be something a browser would have blocked.
     expect(github?.violations ?? []).toEqual([]);
   });
+
+  /** Opens the Settings screen and waits until the section has read the stored state. */
+  async function renderSettings(): Promise<HTMLElement> {
+    const router = createMemoryRouter(buildRoutes(features), { initialEntries: ['/setari'] });
+    render(<RouterProvider router={router} />);
+    await screen.findByRole('heading', { level: 2, name: SECTION });
+    const section = screen.getByRole('region', { name: SECTION });
+    await waitFor(() => expect(within(section).queryByText('Se încarcă…')).toBeNull());
+    return section;
+  }
 
   return {
     get db(): PretometruDB {
@@ -128,15 +182,26 @@ export function syncHarness() {
       github = await makeWorld(options);
       install();
     },
+    /**
+     * From now on every read of the database takes `ms` longer, so that the stored state reaches the
+     * screen late, as it can on a busy device (0 ends it). A test that says what the screen shows
+     * right after something happened can use it to check that the screen does not wait for the
+     * database; one that waits for the database does not need it.
+     */
+    slowReads(ms: number) {
+      delay.ms = ms;
+    },
 
-    /** Opens the Settings screen and waits until the section has read the stored state. */
-    async renderSettings(): Promise<HTMLElement> {
-      const router = createMemoryRouter(buildRoutes(features), { initialEntries: ['/setari'] });
-      render(<RouterProvider router={router} />);
-      await screen.findByRole('heading', { level: 2, name: SECTION });
-      const section = screen.getByRole('region', { name: SECTION });
-      await waitFor(() => expect(within(section).queryByText('Se încarcă…')).toBeNull());
-      return section;
+    renderSettings,
+    /**
+     * Closes the app and opens Settings again: nothing is left in memory (not the last sync, not an
+     * unlocked token), so the section has only what was stored to go by.
+     */
+    async restart(): Promise<HTMLElement> {
+      cleanup();
+      lockToken();
+      resetSyncRuntime();
+      return renderSettings();
     },
   };
 }

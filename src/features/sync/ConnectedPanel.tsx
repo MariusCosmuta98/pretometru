@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from 'react';
 import {
+  currentFailure,
   disconnect,
   getSyncServices,
   isBlockingCode,
@@ -20,7 +21,7 @@ import {
 } from '@/ui/controls';
 import { ConnectForm } from './ConnectForm';
 import { formatWhen } from './format';
-import { errorMessage, PHASE_LABELS, successText, toFailure, type Failure } from './messages';
+import { errorMessage, PHASE_LABELS, successText, type Failure } from './messages';
 import { useSyncRuntime } from './useSync';
 
 interface Props {
@@ -94,18 +95,14 @@ export function ConnectedPanel({ view }: Props) {
   const { connection, protection, status, unsynced } = view;
   const runtime = useSyncRuntime();
   const autoId = useId();
-  const [failure, setFailure] = useState<Failure>();
   const [changingToken, setChangingToken] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const locked = protection === 'passphrase' && !runtime.unlocked;
 
-  async function syncNow() {
-    setFailure(undefined);
-    try {
-      await runSync();
-    } catch (error) {
-      setFailure(toFailure(error));
-    }
+  function syncNow() {
+    // How it ends reaches the screen through the runtime and the stored status, like the outcome
+    // of a sync that something else started: there is nothing to keep from the rejection.
+    void runSync().catch(() => undefined);
   }
 
   async function toggleAuto(on: boolean) {
@@ -118,15 +115,10 @@ export function ConnectedPanel({ view }: Props) {
     await disconnect(await services.getDb(), services);
   }
 
-  const shownFailure: Failure | undefined =
-    failure ?? (status && !status.ok && status.error ? status.error : undefined);
+  // One value for the alert and for what follows from it, so that they never disagree.
+  const failure = currentFailure(status, runtime.lastAttempt);
   // Automatic sync does not retry what retrying cannot fix: it waits for a manual sync that works.
-  const paused =
-    connection.auto &&
-    status !== undefined &&
-    !status.ok &&
-    status.error !== undefined &&
-    isBlockingCode(status.error.code);
+  const paused = connection.auto && failure !== undefined && isBlockingCode(failure.code);
 
   return (
     <div className="space-y-4">
@@ -159,7 +151,7 @@ export function ConnectedPanel({ view }: Props) {
         )}
       </div>
 
-      {shownFailure && !runtime.running ? <FailureAlert failure={shownFailure} /> : null}
+      {failure && !runtime.running ? <FailureAlert failure={failure} /> : null}
       {paused && !runtime.running ? (
         <p className="text-sm text-slate-600 dark:text-slate-400">
           Sincronizarea automată este oprită până când o sincronizare reușește. Rezolvă problema de
@@ -174,7 +166,7 @@ export function ConnectedPanel({ view }: Props) {
           type="button"
           className={buttonPrimary}
           disabled={runtime.running || locked}
-          onClick={() => void syncNow()}
+          onClick={syncNow}
         >
           Sincronizează acum
         </button>

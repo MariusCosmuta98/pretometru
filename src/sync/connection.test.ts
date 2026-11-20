@@ -13,7 +13,7 @@ import {
   TOKEN_KEY,
   unlockToken,
 } from './connection';
-import { getSyncRuntime, resetSyncRuntime } from './runtime';
+import { getSyncRuntime, resetSyncRuntime, setSyncRuntime } from './runtime';
 import { OWNER, REPO, TOKEN } from './testing';
 
 const services = {
@@ -84,6 +84,17 @@ describe('the connection', () => {
     expect(await resolveToken(db)).toBe('another-fake-token');
   });
 
+  it('starts the history of the last sync over when the token is replaced', async () => {
+    await saveConnection(db, input, services);
+    setSyncRuntime({
+      lastAttempt: { at: '2026-11-20T11:00:00.000Z', failure: { code: 'BAD_TOKEN' } },
+    });
+
+    await saveConnection(db, { ...input, token: 'another-fake-token' }, services);
+
+    expect(getSyncRuntime().lastAttempt).toBeUndefined();
+  });
+
   it('treats damaged stored values as no connection', async () => {
     await setKeyValue(db.syncState, CONNECTION_KEY, { owner: OWNER });
     await setKeyValue(db.syncState, TOKEN_KEY, { kind: 'plain' });
@@ -133,5 +144,16 @@ describe('disconnecting', () => {
     await saveConnection(db, { ...input, passphrase: 'parola mea' }, services);
     await disconnect(db, services);
     expect(getSyncRuntime().unlocked).toBe(false);
+  });
+
+  it('forgets how the last sync ended: it was about a connection that is gone', async () => {
+    await saveConnection(db, input, services);
+    setSyncRuntime({
+      lastAttempt: { at: '2026-11-20T11:00:00.000Z', failure: { code: 'BAD_TOKEN' } },
+    });
+
+    await disconnect(db, services);
+
+    expect(getSyncRuntime().lastAttempt).toBeUndefined();
   });
 });

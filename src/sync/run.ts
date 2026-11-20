@@ -1,7 +1,7 @@
 import type { PretometruDB } from '@/storage';
 import { readConnection, resolveToken } from './connection';
 import { syncNow, type SyncResult } from './engine';
-import { isSyncError, SyncError } from './errors';
+import { describeFailure, isSyncError, SyncError, type SyncFailure } from './errors';
 import { createGitHubClient } from './github';
 import { setSyncRuntime } from './runtime';
 import { getSyncServices } from './services';
@@ -28,6 +28,7 @@ async function execute(): Promise<SyncResult> {
   }
 
   setSyncRuntime({ running: true, phase: 'checking' });
+  let failure: SyncFailure | undefined;
   try {
     const connection = await readConnection(db);
     if (!connection) throw new SyncError('NOT_CONFIGURED', 'GitHub sync is not set up');
@@ -50,14 +51,20 @@ async function execute(): Promise<SyncResult> {
     await recordSuccess(db, result, services);
     return result;
   } catch (error) {
-    const failure = toSyncError(error);
-    if (!NOT_AN_ATTEMPT.has(failure.code)) {
+    const syncError = toSyncError(error);
+    failure = describeFailure(syncError);
+    if (!NOT_AN_ATTEMPT.has(syncError.code)) {
       // The status is a convenience; failing to write it must not hide why the sync failed.
-      await recordFailure(db, failure, services).catch(() => undefined);
+      await recordFailure(db, syncError, services).catch(() => undefined);
     }
-    throw failure;
+    throw syncError;
   } finally {
-    setSyncRuntime({ running: false, phase: undefined });
+    // One update, so that a screen never sees "not running" without also seeing how the sync ended.
+    setSyncRuntime({
+      running: false,
+      phase: undefined,
+      lastAttempt: { at: services.now().toISOString(), failure },
+    });
   }
 }
 

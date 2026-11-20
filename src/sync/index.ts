@@ -15,16 +15,23 @@ export {
 export type { Connection, ConnectionInput, TokenProtection } from './connection';
 export { syncNow } from './engine';
 export type { SyncOptions, SyncResult } from './engine';
-export { isAbortError, isBlockingCode, isSyncError, SYNC_ERROR_CODES, SyncError } from './errors';
-export type { SyncErrorCode } from './errors';
+export {
+  describeFailure,
+  isAbortError,
+  isBlockingCode,
+  isSyncError,
+  SYNC_ERROR_CODES,
+  SyncError,
+} from './errors';
+export type { SyncErrorCode, SyncFailure } from './errors';
 export { isValidRepoRef, parseRepoRef, tokenKind } from './github';
 export type { TokenKind } from './github';
 export { resetRunSync, runSync } from './run';
 export { getSyncRuntime, resetSyncRuntime, subscribeSyncRuntime } from './runtime';
-export type { SyncPhase, SyncRuntime } from './runtime';
+export type { SyncAttempt, SyncPhase, SyncRuntime } from './runtime';
 export { getSyncServices, resetSyncServices, setSyncServices } from './services';
 export type { SyncServices } from './services';
-export { latestChange, loadSyncView, readStatus } from './status';
+export { currentFailure, latestChange, loadSyncView, readStatus } from './status';
 export type { SyncStatus, SyncView } from './status';
 export { isPlausibleRepoInput, verifyConnection } from './verify';
 export type { ConnectionCheck, RemoteSummary, VerifyInput, VerifyStep } from './verify';

@@ -354,6 +354,9 @@ describe('a connected device', () => {
     await connectDevice();
     const section = await harness.renderSettings();
     await within(section).findByText(/Ultima sincronizare reușită/);
+    // The stored result reaches the screen late. What the screen says about the failure, and about
+    // what follows from it, comes from the sync itself and does not wait for the database.
+    harness.slowReads(300);
 
     harness.github.revoke(TOKEN);
     press(section, 'Sincronizează acum');
@@ -361,9 +364,44 @@ describe('a connected device', () => {
     expect((await within(section).findByRole('alert')).textContent).toContain(
       'GitHub nu acceptă tokenul',
     );
-    expect(within(section).getByText(/Ultima sincronizare reușită/)).toBeTruthy();
     // A revoked token is not fixed by trying again, so the automatic sync waits for a manual one.
     expect(within(section).getByText(/Sincronizarea automată este oprită/)).toBeTruthy();
+    expect(within(section).getByText(/Ultima sincronizare reușită/)).toBeTruthy();
+  });
+
+  it('shows after a restart why the last sync failed, and that the last success is still there', async () => {
+    await connectDevice();
+    const section = await harness.renderSettings();
+    await within(section).findByText(/Ultima sincronizare reușită/);
+    harness.github.revoke(TOKEN);
+    press(section, 'Sincronizează acum');
+    await within(section).findByRole('alert');
+
+    const reopened = await harness.restart();
+
+    expect((await within(reopened).findByRole('alert')).textContent).toContain(
+      'GitHub nu acceptă tokenul',
+    );
+    expect(within(reopened).getByText(/Sincronizarea automată este oprită/)).toBeTruthy();
+    expect(within(reopened).getByText(/Ultima sincronizare reușită/)).toBeTruthy();
+  });
+
+  it('stops showing a failure once a later sync succeeds, whoever started it', async () => {
+    await connectDevice();
+    const section = await harness.renderSettings();
+    await within(section).findByText(/Ultima sincronizare reușită/);
+    harness.github.setOffline(true);
+    press(section, 'Sincronizează acum');
+    expect((await within(section).findByRole('alert')).textContent).toContain(
+      'Nu am putut ajunge la GitHub',
+    );
+
+    // The device is back online and the automatic sync runs: not the button this screen has.
+    harness.github.setOffline(false);
+    await act(() => runSync());
+
+    expect(await within(section).findByText(/Totul era deja la zi\./)).toBeTruthy();
+    expect(within(section).queryByRole('alert')).toBeNull();
   });
 
   it('does not call a temporary failure a reason to stop the automatic sync', async () => {
@@ -378,6 +416,12 @@ describe('a connected device', () => {
       'Nu am putut ajunge la GitHub',
     );
     expect(within(section).queryByText(/Sincronizarea automată este oprită/)).toBeNull();
+    // The same from what was stored, which is all there is after a restart.
+    const reopened = await harness.restart();
+    expect((await within(reopened).findByRole('alert')).textContent).toContain(
+      'Nu am putut ajunge la GitHub',
+    );
+    expect(within(reopened).queryByText(/Sincronizarea automată este oprită/)).toBeNull();
   });
 
   it('explains a branch that keeps moving because other devices sync at the same time', async () => {

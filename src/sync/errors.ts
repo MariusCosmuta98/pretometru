@@ -72,6 +72,27 @@ export function isSyncError(error: unknown): error is SyncError {
   return error instanceof SyncError;
 }
 
+/** A failure as it is kept and shown, without the stack: also the shape of the stored status. */
+export interface SyncFailure {
+  readonly code: SyncErrorCode;
+  /** A file path or GitHub's own words: never a secret. */
+  readonly detail?: string;
+  /** When a rate limit ends (ISO). */
+  readonly retryAt?: string;
+}
+
+export function describeFailure(error: SyncError): SyncFailure {
+  const retryAt =
+    error.retryAt && !Number.isNaN(error.retryAt.getTime())
+      ? error.retryAt.toISOString()
+      : undefined;
+  return {
+    code: error.code,
+    ...(error.detail ? { detail: error.detail } : {}),
+    ...(retryAt ? { retryAt } : {}),
+  };
+}
+
 export function isAbortError(error: unknown): boolean {
   return (
     typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError'

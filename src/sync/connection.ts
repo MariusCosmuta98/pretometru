@@ -112,7 +112,8 @@ export async function saveConnection(
   });
 
   unlockedToken = stored.kind === 'passphrase' ? input.token : undefined;
-  setSyncRuntime({ unlocked: stored.kind === 'passphrase' });
+  // A new or changed connection starts its own history: what the old one came to no longer applies.
+  setSyncRuntime({ unlocked: stored.kind === 'passphrase', lastAttempt: undefined });
   return connection;
 }
 
@@ -138,6 +139,7 @@ export async function disconnect(
     }
   });
   lockToken();
+  setSyncRuntime({ lastAttempt: undefined });
 }
 
 /** Opens a passphrase-protected token for this session. Throws `BAD_PASSPHRASE` when it does not fit. */

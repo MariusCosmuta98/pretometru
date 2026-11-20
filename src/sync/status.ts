@@ -9,7 +9,8 @@ import {
   type TokenProtection,
 } from './connection';
 import type { SyncResult } from './engine';
-import { SYNC_ERROR_CODES, type SyncError } from './errors';
+import { describeFailure, SYNC_ERROR_CODES, type SyncError, type SyncFailure } from './errors';
+import type { SyncAttempt } from './runtime';
 import type { SyncServices } from './services';
 
 const StatusSchema = z.strictObject({
@@ -70,20 +71,30 @@ export async function recordFailure(
   services: Pick<SyncServices, 'now'>,
 ): Promise<void> {
   const previous = await readStatus(db);
-  const retryAt =
-    error.retryAt && !Number.isNaN(error.retryAt.getTime()) ? error.retryAt : undefined;
   const status: SyncStatus = {
     at: services.now().toISOString(),
     ok: false,
-    error: {
-      code: error.code,
-      ...(error.detail ? { detail: error.detail } : {}),
-      ...(retryAt ? { retryAt: retryAt.toISOString() } : {}),
-    },
+    error: describeFailure(error),
     ...(previous?.success ? { success: previous.success } : {}),
     ...(previous?.syncedThrough ? { syncedThrough: previous.syncedThrough } : {}),
   };
   await setKeyValue(db.syncState, STATUS_KEY, status, services);
+}
+
+/**
+ * The failure the section shows: that of the sync which ended last. This session's own last sync is
+ * known the moment it ends, whoever started it (the button, the automatic run, the onboarding),
+ * while the stored status follows through a live query; after a restart, or when another tab synced
+ * since, the stored status is the newer witness. A tie goes to the session: it is the same sync.
+ */
+export function currentFailure(
+  status: SyncStatus | undefined,
+  lastAttempt: SyncAttempt | undefined,
+): SyncFailure | undefined {
+  if (lastAttempt && (status === undefined || lastAttempt.at >= status.at)) {
+    return lastAttempt.failure;
+  }
+  return status && !status.ok ? status.error : undefined;
 }
 
 /** The newest `updatedAt` among the records a sync carries (portable settings only). */

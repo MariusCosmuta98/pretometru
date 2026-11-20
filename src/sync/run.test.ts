@@ -142,6 +142,39 @@ describe('runSync', () => {
     expect(getSyncRuntime()).toMatchObject({ running: false, phase: undefined });
   });
 
+  it('tells the screen how each sync ended, the moment it ended', async () => {
+    await connect();
+    await seedSample(db);
+
+    await runSync();
+    expect(getSyncRuntime().lastAttempt).toEqual({
+      at: '2026-11-20T12:00:00.000Z',
+      failure: undefined,
+    });
+
+    github.setOffline(true);
+    await expect(runSync()).rejects.toMatchObject({ code: 'NETWORK' });
+    expect(getSyncRuntime()).toMatchObject({
+      running: false,
+      lastAttempt: { failure: { code: 'NETWORK' } },
+    });
+
+    github.setOffline(false);
+    await runSync();
+    expect(getSyncRuntime().lastAttempt?.failure).toBeUndefined();
+  });
+
+  it('says why a sync failed even when the status cannot be written', async () => {
+    await connect();
+    github.setOffline(true);
+    vi.spyOn(db.syncState, 'put').mockRejectedValue(new Error('the disk is full'));
+
+    await expect(runSync()).rejects.toMatchObject({ code: 'NETWORK' });
+
+    expect(getSyncRuntime().lastAttempt?.failure).toMatchObject({ code: 'NETWORK' });
+    expect(await readStatus(db)).toBeUndefined();
+  });
+
   it('needs the passphrase of a protected token again after a restart, which is not a failed sync', async () => {
     await connect('parola mea');
     lockToken();
