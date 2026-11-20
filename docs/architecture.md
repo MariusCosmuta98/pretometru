@@ -17,10 +17,12 @@ it, what may import what, and how to add a screen without touching shared files*
 
 - `src/domain` and `src/parsers` are **pure**: no DOM, IndexedDB, network or clock (inject `now`). They run under
   Node/Vitest. ESLint enforces the import and global-variable bans (`eslint.config.js`).
-- `src/catalog`, `src/analytics`, `src/import`, `src/lists`, `src/sync` and `src/admin` are React-free: ESLint rejects
-  `react`, `react-router` and imports of `@/features`, `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
+- `src/catalog`, `src/analytics`, `src/import`, `src/lists`, `src/sync`, `src/admin` and `src/ai` are React-free: ESLint
+  rejects `react`, `react-router` and imports of `@/features`, `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
   `src/admin` and `src/features/backup` additionally may not use `fetch`, `XMLHttpRequest`, `WebSocket` or
   `EventSource`: backup, categories and stores never touch the network.
+- The network has two doors, both opt-in and both listed in the CSP: `src/sync` talks to `api.github.com` and `src/ai` (when
+  the user switched it on, §16) to `generativelanguage.googleapis.com`. Nothing else may call either host.
 - Features share code only through `src/ui`, `src/domain`, `src/storage` or a logic module, never by reaching into a
   sibling feature.
 - Path alias: `@/` = `src/` (configured in `tsconfig*.json` and `vite.config.ts`).
@@ -42,7 +44,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/lists/`                 | shopping lists: list and item storage, cheapest place per item, grouping by store (§5d) | `shopping-lists`                      |
 | `src/sync/`                  | GitHub sync: private data repo, one atomic commit per sync, last-write-wins + tombstones (§13) | `sync-github`                         |
 | `src/admin/`                 | backup export/import (file, preview, merge or replace), category and store management (§15) | `backup-categories-stores`            |
-| `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
+| `src/ai/`                    | optional Gemini reading of a photo: REST client, answer validation, image preparation, key and settings; off by default and loaded lazily (§16) | `ai-gemini-optional`                  |
 | `src/pwa/`                   | the service worker (`sw.ts`: shell precache, engine cache, Web Share Target), the update prompt, persistent storage, the page's side of the worker (§14) | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
 | `src/features/home`, `stats` | dashboard and statistics screens                                     | `insights-dashboard` (until then `price-analytics`) |
 | `src/features/add-receipt`, `receipts` | add receipt (files, camera, pasted text, manual), receipt list, review (`bonuri/:receiptId`, §12) | `import-review-ui`                    |
@@ -50,6 +52,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/features/lists`         | shopping lists: overview and list screens (§5d); "Adaugă pe listă" lives on the product page (`src/features/products/AddToList.tsx`) | `shopping-lists`                      |
 | `src/features/sync`          | Settings section: GitHub onboarding, token, "Sincronizează acum", status (§13) | `sync-github`                         |
 | `src/features/offline`       | Settings section "Offline și stocare": offline readiness, "Descarcă acum" for the engines, persistent storage (no routes, §14) | `pwa-offline-share`                   |
+| `src/features/ai`            | Settings section "Gemini (opțional)": key, enable switch, connection test (no routes, §16); the "Citește cu AI" action lives in the review (`src/features/receipts/review/AiReading.tsx`) | `ai-gemini-optional`                  |
 | `src/features/backup`, `categories`, `stores` | Settings sections "Copie de siguranță", "Categorii" and "Magazine"; the routes `/setari/categorii` and `/setari/magazine` (§15) | `backup-categories-stores`            |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
@@ -1065,3 +1068,33 @@ form to it and leave drafts in the add-receipt screen (nothing is confirmed, syn
 ten files of any size, which the importer then refuses above 40 MB). If that ever matters, show the shared files and wait for
 a tap instead of starting the import (`useSharedFiles` in `src/pwa`). An update that changes an engine leaves the new engine
 unstored until it is next used online or fetched from Settings: the old caches are deleted when the new worker activates.
+
+## 16. Optional AI reading, Gemini (`src/ai`, `src/features/ai`)
+
+An optional second way to read a photo or screenshot: Google's Gemini API with the user's **own key**, **off by default**
+(plan §2, §11, §12.5). The image leaves the device only when the user presses "Citește cu AI" on one receipt and confirms
+what is sent. Nothing of it loads or runs unless the feature is switched on. This section starts with what the Gemini
+documentation said when the feature was built, because the plan marked those points "de verificat" and they change.
+
+### What Gemini's documentation said (read on 2026-11-20)
+
+Official pages, read as markdown from `aistudio.google.com/docs/*.md` (the `ai.google.dev/gemini-api/docs/*` addresses
+redirect there). Re-check them whenever this feature is touched.
+
+| Point | What the documentation says | What the app does about it |
+| --- | --- | --- |
+| Data use on the free tier | *Gemini API Additional Terms of Service* (effective 2026-03-23), "Unpaid Services": Google uses the submitted content and the answers to improve its products, human reviewers may read them, and "Do not submit sensitive, confidential, or personal information to the Unpaid Services". The pricing page says the same (free: "Content used to improve our products: Yes", paid: "No"). | The Settings section and the confirmation before every send carry this warning (`src/ai/notice.ts`, one text for both). |
+| EEA, Switzerland, UK | The same terms: there, the *Paid Services* data terms (no product improvement use) "apply to all Services, including Google AI Studio and unpaid quota in the Gemini API", but also "You may use only Paid Services when making API Clients available to users in the European Economic Area, Switzerland, or the United Kingdom". | The warning names this exception and does not rely on it: the app cannot know where the user is, so it tells them to read the terms. |
+| Who the terms are for | "for developers building with Google AI models for professional or business purposes, not for consumer use". | Said in the README and the Settings text: the key and its terms are the user's own responsibility. This is why the feature is optional, off, and never the only way to import. |
+| Models | Gemini 2.5 is deprecated (`gemini-2.5-flash` routes to `gemini-3.5-flash-lite` on 2026-12-01; 2.5 access is limited to existing users). For new projects the pages name Gemini 4 Hydrogen and **Gemini 3.5 Flash-Lite** (`gemini-3.5-flash-lite`, stable, July 2026: "document parsing", structured outputs supported, free tier, thinking "minimal" by default). `gemini-3.6-flash`, `gemini-3.8-flash` and `gemini-4-hydrogen` also have a free tier; the other Gemini 4 models do not. | The default model is `gemini-3.5-flash-lite`; the model id is a setting (Settings, "Setări avansate"), because model names are retired every few months. |
+| Which endpoint | `generateContent` is "still supported for existing integrations, but is considered a legacy API"; the new default is the Interactions API. That one needs an `Api-Revision` request header, and the CORS preflight with that header is **refused (403)**, so a browser cannot use it. | `generateContent` (`POST /v1beta/models/{model}:generateContent`). Its preflight was checked with `OPTIONS` from `https://mariuscosmuta98.github.io` and from `http://localhost:4173`: 200, the origin is echoed, `content-type` and `x-goog-api-key` are allowed. `GET /v1beta/models/{model}` (the connection test) too. |
+| Request shape | `inline_data` image part before the text part, `generationConfig.responseMimeType: "application/json"` with `responseJsonSchema` (JSON Schema subset: `type`, `properties`, `required`, `items`, `enum`, `description`), the whole request below 20 MB. Images: PNG, JPEG, WebP, HEIC, HEIF. | As described in "The request" below. |
+| Sampling and thinking parameters | `temperature`, `topP`, `topK` are ignored on Gemini 3.6+ and 4 and "will return 400 errors in a future release"; `thinkingLevel` is an error on models before Gemini 3. | The request sends none of them: it works on any model and the default thinking of the default model is already minimal. |
+| Image tokens | From Gemini 3 on the default media resolution of an image is already the high one (1120 tokens). | No `mediaResolution` is sent; the image is limited to 3.5 megapixels (below). |
+| API keys | AI Studio creates *authorization keys* by default since 2026-05-28; unrestricted standard keys are rejected; the pages warn against shipping a key in client code. | The key is typed by the user, kept on their device only and sent in the `x-goog-api-key` header, never in a URL. The README says to use a key made for this app and to delete it when a device is lost. |
+| Errors | A wrong key answers `400` with `error.status: "INVALID_ARGUMENT"` and `details[].reason: "API_KEY_INVALID"` (checked with a made-up key, no data sent; the error answer carries CORS headers, so the page can read it). `429 RESOURCE_EXHAUSTED` for the per-minute and the per-day limits (the day resets at midnight Pacific time); `Retry-After` is **not** exposed to browsers. | See "Errors". |
+| Region | Romania is in the list of available regions. | - |
+
+Not verified (no key, no real call): the exact wording of a quota error, how well a given model reads the low-resolution
+Mega Image photo, and that the schema is accepted by every model a user may type. The README has a checklist for a real
+run.
