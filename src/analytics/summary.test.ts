@@ -27,6 +27,7 @@ describe('summarizeProduct', () => {
     expect(summary.cheapest?.storeName).toBe('METRO');
     expect(summary.cheapest?.best.date).toBe('2026-11-01');
     expect(summary.last?.storeName).toBe('Kaufland'); // the latest purchase, whatever its price
+    expect(summary.cheapestVsLastPct).toBe(-10.3); // METRO's 1,30 against the 1,45 paid last
     expect(summary.onlyAt).toBeUndefined();
     expect(summary.windowDays).toBe(90);
   });
@@ -43,6 +44,8 @@ describe('summarizeProduct', () => {
       chain: 'kaufland',
     });
     expect(summary.stores).toHaveLength(1);
+    // the last purchase (1,45) is also the best in the window (1,50 on 01.10 was dearer)
+    expect(summary.cheapestVsLastPct).toBe(0);
   });
 
   it('judges "only at" over the whole history, not just the window', () => {

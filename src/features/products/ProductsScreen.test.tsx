@@ -51,6 +51,7 @@ describe('Products screen', () => {
     expect(text).toContain('Ultimul preț: 1,45 lei/rolă (11,60 lei / 8 role)');
     expect(text).toContain('Kaufland · 07.11.2026');
     expect(text).toContain('Cel mai ieftin: METRO 1,30 lei/rolă');
+    expect(text).toContain('cu 10,2% mai ieftin decât ultimul preț'); // 1,30 against the 1,45 paid last
     expect(text).toContain('reducere'); // METRO's price carried a discount
     expect(text).toContain('(20.09.2026)');
     expect(text).toContain('−9,4%'); // Kaufland: 1,60 -> 1,45

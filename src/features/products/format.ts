@@ -46,6 +46,13 @@ export function formatPercent(pct: number): string {
   return `${sign}${Math.abs(pct).toFixed(1).replace('.', ',')}%`;
 }
 
+/** How the best price in the window compares with the last price paid; nothing when they are equal. */
+export function formatVersusLast(pct: number): string | undefined {
+  if (pct === 0) return undefined;
+  const size = `${Math.abs(pct).toFixed(1).replace('.', ',')}%`;
+  return `cu ${size} ${pct < 0 ? 'mai ieftin' : 'mai scump'} decât ultimul preț`;
+}
+
 const PACK_UNIT_LABELS: Record<PackUnit, string> = {
   g: 'g',
   kg: 'kg',

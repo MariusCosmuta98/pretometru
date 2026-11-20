@@ -65,6 +65,14 @@ export function summarizeProduct(
     ...(lastPurchase ? { last: lastPurchase } : {}),
     stores: [...stores, ...stale],
     ...(first?.best ? { cheapest: { ...first, best: first.best } } : {}),
+    ...(first?.best && lastPurchase
+      ? {
+          cheapestVsLastPct: percentChange(
+            lastPurchase.pricePerBaseMilliBani,
+            first.best.pricePerBaseMilliBani,
+          ),
+        }
+      : {}),
     ...(everyStore.size === 1 && single
       ? { onlyAt: { storeId: single.storeId, storeName: single.storeName, chain: single.chain } }
       : {}),

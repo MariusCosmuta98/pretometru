@@ -7,6 +7,7 @@ import {
   formatPercent,
   formatQuantity,
   formatUnitPrice,
+  formatVersusLast,
   paidEach,
 } from './format';
 
@@ -54,6 +55,14 @@ describe('formatPercent', () => {
     expect(formatPercent(-3.25)).toBe('−3,3%');
     expect(formatPercent(0)).toBe('0,0%');
     expect(formatPercent(75.6)).toBe('+75,6%');
+  });
+});
+
+describe('formatVersusLast', () => {
+  it('says how the best price compares with the last one, and nothing when they are equal', () => {
+    expect(formatVersusLast(-10.3)).toBe('cu 10,3% mai ieftin decât ultimul preț');
+    expect(formatVersusLast(4)).toBe('cu 4,0% mai scump decât ultimul preț');
+    expect(formatVersusLast(0)).toBeUndefined();
   });
 });
 

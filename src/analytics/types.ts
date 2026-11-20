@@ -99,6 +99,11 @@ export interface ProductPriceSummary {
   stores: StoreComparison[];
   /** The cheapest store in the window, if any. */
   cheapest?: StoreComparison & { best: PriceObservation };
+  /**
+   * The cheapest price in the window against the last price paid, in percent (negative: the last
+   * purchase was dearer than the best known one; 0: it was the best). Absent without both.
+   */
+  cheapestVsLastPct?: number;
   /** Set when every purchase ever was at one store: no comparison is possible (plan §7.6). */
   onlyAt?: { storeId: string; storeName: string; chain: Chain };
   /** Latest price versus the previous purchase at the same store. */

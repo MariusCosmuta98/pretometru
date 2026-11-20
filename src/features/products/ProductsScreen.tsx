@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { ProductPriceSummary } from '@/analytics';
 import { rankProducts } from '@/catalog';
 import { ChangeBadge, SaleTag, UnitPrice } from './badges';
-import { formatDay } from './format';
+import { formatDay, formatVersusLast } from './format';
 import { Failure, Loading } from './notices';
 import { PriceFilters } from './PriceFilters';
 import { loadOverview, type ProductsOverview } from './queries';
@@ -11,7 +11,9 @@ import { card, field, muted } from './styles';
 import { useDb, useDbQuery } from './useLive';
 
 function PriceLine({ summary }: { summary: ProductPriceSummary }) {
-  const { last, cheapest, onlyAt, incomparable, baseUnit } = summary;
+  const { last, cheapest, cheapestVsLastPct, onlyAt, incomparable, baseUnit } = summary;
+  const versusLast =
+    cheapestVsLastPct === undefined ? undefined : formatVersusLast(cheapestVsLastPct);
 
   if (!last) {
     return (
@@ -35,6 +37,7 @@ function PriceLine({ summary }: { summary: ProductPriceSummary }) {
           Cel mai ieftin: {cheapest.storeName}{' '}
           <UnitPrice observation={cheapest.best} baseUnit={baseUnit} />
           {cheapest.best.onSale && <SaleTag />} ({formatDay(cheapest.best.date)})
+          {versusLast && <> · {versusLast}</>}
         </p>
       ) : (
         <p>Niciun preț în perioada aleasă</p>
