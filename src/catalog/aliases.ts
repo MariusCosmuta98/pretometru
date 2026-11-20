@@ -7,19 +7,20 @@ import {
   type RecordPatch,
   type StorageContext,
 } from '@/storage';
-import { clonePack, samePack } from './packs';
 import { applyDefaultPack } from './line-packs';
+import { clonePack, samePack } from './packs';
 import type { MappingChoice, PackChoice } from './types';
 
+/** Returns the id of an alias that learned its first pack size, so stored lines can be filled in. */
 async function rememberOne(
   db: PretometruDB,
   chain: Chain,
   choice: MappingChoice,
   context: StorageContext | undefined,
-): Promise<void> {
+): Promise<string | undefined> {
   const rawName = choice.rawName.trim();
   const normName = normalizeName(rawName);
-  if (normName === '') return;
+  if (normName === '') return undefined;
   if (!(await getActive(db.products, choice.productId))) {
     throw new RangeError(`Unknown product ${choice.productId}`);
   }
@@ -45,8 +46,7 @@ async function rememberOne(
       },
       context,
     );
-    if (created.defaultPack) await applyDefaultPack(db, created, undefined, context);
-    return;
+    return created.defaultPack ? created.id : undefined;
   }
 
   // Only write when something changed: re-confirming a known receipt must not churn `updatedAt`.
@@ -57,19 +57,21 @@ async function rememberOne(
   if (choice.pack !== undefined && !samePack(existing.defaultPack, choice.pack)) {
     patch.defaultPack = clonePack(choice.pack);
   }
-  if (Object.keys(patch).length === 0) return;
-  const updated = await updateRecord(db.aliases, existing.id, patch, context);
-  if (updated && patch.defaultPack) {
-    await applyDefaultPack(db, updated, existing.defaultPack, context);
-  }
+  if (Object.keys(patch).length === 0) return undefined;
+  await updateRecord(db.aliases, existing.id, patch, context);
+  return patch.defaultPack && existing.defaultPack === undefined ? existing.id : undefined;
 }
 
 /**
  * Remembers confirmed matches so the next import is automatic: one alias per chain and normalised
  * printed name, carrying the EAN and the pack size when the choice has them. A name that was
- * already known is re-pointed at the chosen product (the user changed their mind). When a pack
- * size is new or changed, the stored lines of that alias are re-derived (see `applyDefaultPack`).
- * All or nothing.
+ * already known is re-pointed at the chosen product (the user changed their mind).
+ *
+ * Pack sizes: the first size learned for a name also fills in the stored lines of that alias that
+ * have none (see `applyDefaultPack`), once the whole batch is in. A later, different size becomes
+ * the new suggestion for the next import without touching stored lines: whether an older line
+ * "has the default" or carries a size somebody typed cannot be told, so confirming a receipt never
+ * re-prices other receipts. `setAliasDefaultPack` is the deliberate way to do that. All or nothing.
  */
 export async function rememberMappings(
   db: PretometruDB,
@@ -82,15 +84,24 @@ export async function rememberMappings(
     'rw',
     [db.aliases, db.products, db.lines, db.receipts, db.stores],
     async () => {
-      for (const choice of choices) await rememberOne(db, chain, choice, context);
+      const learned = new Set<string>();
+      for (const choice of choices) {
+        const id = await rememberOne(db, chain, choice, context);
+        if (id !== undefined) learned.add(id);
+      }
+      for (const id of learned) {
+        const alias = await getActive(db.aliases, id);
+        if (alias?.defaultPack) await applyDefaultPack(db, alias, undefined, context);
+      }
     },
   );
 }
 
 /**
  * Sets (or, with `undefined`, clears) the pack size an alias assumes when the printed name has
- * none, and re-derives the unit prices of the stored lines that used the old size. Returns the
- * updated alias, or `undefined` when it does not exist.
+ * none, and re-derives the unit prices of the stored lines that used the old size (those with no
+ * size, or with exactly the old one). Returns the updated alias, or `undefined` when it does not
+ * exist.
  */
 export async function setAliasDefaultPack(
   db: PretometruDB,

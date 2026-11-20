@@ -18,9 +18,11 @@ function PriceLine({ summary }: { summary: ProductPriceSummary }) {
   if (!last) {
     return (
       <p className={muted}>
-        {incomparable.length > 0
-          ? `${incomparable.length} achiziții fără mărime cunoscută: nu se pot compara`
-          : 'Nicio achiziție încă'}
+        {incomparable.length === 1
+          ? '1 achiziție fără mărime cunoscută: nu se poate compara'
+          : incomparable.length > 1
+            ? `${incomparable.length} achiziții fără mărime cunoscută: nu se pot compara`
+            : 'Nicio achiziție încă'}
       </p>
     );
   }

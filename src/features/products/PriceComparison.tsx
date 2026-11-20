@@ -8,6 +8,7 @@ import {
   formatPercent,
   formatUnitPrice,
   paidEach,
+  unitLabel,
 } from './format';
 import { card, muted, sectionTitle } from './styles';
 
@@ -108,7 +109,8 @@ export function PriceComparison({ summary }: { summary: ProductPriceSummary }) {
       ) : (
         <table className="w-full text-sm">
           <caption className="sr-only">
-            Prețul pe {baseUnit} la fiecare magazin, în ultimele {summary.windowDays} de zile
+            Prețul pe {unitLabel(baseUnit)} la fiecare magazin, în ultimele {summary.windowDays} de
+            zile
           </caption>
           <thead className="text-left text-xs text-slate-600 dark:text-slate-400">
             <tr>

@@ -216,10 +216,14 @@ How a line is matched, in this order (`via` names the first step that applied):
 
 1. **alias**: the newest live alias of `(receipt.chain, normalizeName(rawName))`, else one without a chain. An alias of
    another chain is deliberately not assigned: the same printed name can be a different product elsewhere (its product
-   is still offered as a candidate, step 3).
+   is still offered as a candidate, step 3). The same goes for the `unknown` chain, which is every shop nobody
+   recognised rather than one shop: only an alias without a chain may assign there.
 2. **ean**: the product, or the alias rows, that carry the code (UPC-A and EAN-13 spellings compare equal). Assigned only
-   when the code has at least 8 digits (shorter ones are truncated prints) and exactly one product claims it;
-   otherwise the products only become candidates.
+   when the code has at least 8 digits (shorter ones are truncated prints; a placeholder of zeros never counts) and
+   exactly one product claims it; otherwise the products only become candidates. When nothing carries the exact print,
+   the other spelling of the code is tried: Mega Image prints the 12 digits of an EAN-13 without its check digit, and a
+   valid EAN-13 is fixed by its first 12 digits, so a 12-digit print joins the one 13-digit code that completes it (and
+   a valid 13-digit code joins its own 12-digit prefix). An exact print always wins over a joined one.
 3. **fuzzy**: likely products in `candidates` (at most 5), best first, `score` 0..1 (higher is better, never 1). Never
    assigned. The line's words are looked up in a fuse.js index of the catalog's words (typos and truncated words such
    as "SMANT" are fine; numbers and sizes must match exactly), and every spelling of a product (its name and the aliases
@@ -228,16 +232,18 @@ How a line is matched, in this order (`via` names the first step that applied):
    category is also filled when step 3 found candidates (`via` stays `fuzzy`).
 5. **none**.
 
-Only `alias` and `ean` set `productId` (with the product's `categoryId`; the product is also `candidates[0]`, score 1):
-a wrong silent merge is worse than a missing one. `pack` is set only when an alias remembers a size that the printed
-name lacks and the line is sold by the piece; a size printed on the receipt always wins. Non-product lines get the
-Non-produs category and are never matched.
+Only `alias` and `ean` set `productId` (with the product's `categoryId` when that category still exists; the product is also
+`candidates[0]`, score 1): a wrong silent merge is worse than a missing one. `pack` is set only when an alias remembers a
+size that the printed name lacks and the line is sold by the piece; a size printed on the receipt always wins.
+Non-product lines get the Non-produs category and are never matched.
 
-**Pack sizes and stored lines.** When an alias's `defaultPack` is set, changed or cleared (`rememberMappings` with a
-`pack`, or `setAliasDefaultPack`), the stored lines of that alias (same product, same normalised name, same chain, sold by
-the piece) that have no size or still carry the old default get the new one through `updateRecord(db.lines, ...)`, which
-re-derives their unit prices. Lines with a size of their own are never touched. This is how Mega's unsized "HARTIE
-IGIENICA" becomes 2,00 lei per roll once the alias knows it is 8 rolls.
+**Pack sizes and stored lines.** `setAliasDefaultPack` (the deliberate edit) sets or clears an alias's `defaultPack` and
+re-derives, through `updateRecord(db.lines, ...)`, the stored lines of that alias (same product, same normalised name,
+same chain, sold by the piece) that have no size or still carry the old default. Lines with a different size are never
+touched. `rememberMappings` (confirming a receipt) is gentler: the **first** size learned for a name fills in the stored
+lines of that alias that have none, which is how Mega's unsized "CARE HARTIE 10R 3S" becomes 2,00 lei per roll once the
+alias knows it is 10 rolls; a **later, different** size only becomes the new suggestion for the next import and never
+re-prices other receipts (an older line that "has the default" cannot be told from one whose size somebody typed).
 
 **Merge and split keep one rule: a printed name has one product.** `mergeProducts` and `splitProduct` set the moved
 lines' `categoryId` to the target's category (a line with a product takes the product's category) and move the
@@ -278,7 +284,8 @@ Rules (each is covered by a test):
   future counts as the latest. A store last used before the window stays in `stores` without a `best`, for reference.
 - **Sale prices**: `onSale` = the line has `discountBani > 0`; the price already includes the discount. `excludeSales`
   removes them from the comparison, the cheapest store and the trend, never from the history and chart.
-- **Only at X**: `onlyAt` is set when every purchase ever was at one store (no comparison, plan §7.6).
+- **Only at X**: `onlyAt` is set when every purchase ever, in any unit, was at one store (no comparison, plan §7.6): the
+  product page then says so instead of showing a comparison or a "cheapest" banner.
 - **Δ and trend**: `change = { from, to, deltaMilliBani, pct, direction }`; under 0,5 % is `flat`. Buying at another store in
   between is not a price move. `cheapestVsLastPct` is the other reading of Δ: the best price in the window against the
   last price paid (the products list shows both).

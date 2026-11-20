@@ -119,4 +119,59 @@ describe('alias default pack and the stored lines', () => {
     const { db } = await setup();
     expect(await setAliasDefaultPack(db, '0000000000000000000000000X', undefined)).toBeUndefined();
   });
+
+  describe('confirming receipts never re-prices other receipts once a size is known', () => {
+    const name = 'HARTIE IGIENICA';
+    const chose = (qty: number) => ({ qty, unit: 'role' as const });
+
+    it('a later receipt with another size only changes what the next import suggests', async () => {
+      const { db, paper, megaLine } = await setup();
+      const first = await saveTestReceipt(db, {
+        chain: 'mega-image',
+        purchasedAt: '2026-11-05T10:00',
+        lines: [{ rawName: name, lineTotalBani: 1600, productId: paper.id, pack: chose(8) }],
+      });
+      await rememberMappings(db, 'mega-image', [
+        { rawName: name, productId: paper.id, pack: chose(8) },
+      ]);
+      expect(await priceOf(db, megaLine.id)).toEqual(['role', 200_000, 8]); // the gap is filled
+
+      // this time the pack was a 4: the user types it on the new receipt
+      const second = await saveTestReceipt(db, {
+        chain: 'mega-image',
+        purchasedAt: '2026-11-12T10:00',
+        lines: [{ rawName: name, lineTotalBani: 1000, productId: paper.id, pack: chose(4) }],
+      });
+      await rememberMappings(db, 'mega-image', [
+        { rawName: name, productId: paper.id, pack: chose(4) },
+      ]);
+
+      expect(await priceOf(db, first.lines[0]!.id)).toEqual(['role', 200_000, 8]); // not 4
+      expect(await priceOf(db, megaLine.id)).toEqual(['role', 200_000, 8]);
+      expect(await priceOf(db, second.lines[0]!.id)).toEqual(['role', 250_000, 4]);
+      expect((await db.aliases.toArray())[0]?.defaultPack).toMatchObject({ qty: 4, unit: 'role' });
+    });
+
+    it('keeps every line of one confirmation at the size it was given', async () => {
+      const { db, paper, megaLine } = await setup();
+      const receipt = await saveTestReceipt(db, {
+        chain: 'mega-image',
+        purchasedAt: '2026-11-12T10:00',
+        lines: [
+          { rawName: name, lineTotalBani: 1600, productId: paper.id, pack: chose(8) },
+          { rawName: name, lineTotalBani: 1000, productId: paper.id, pack: chose(4) },
+        ],
+      });
+
+      await rememberMappings(db, 'mega-image', [
+        { rawName: name, productId: paper.id, pack: chose(8) },
+        { rawName: name, productId: paper.id, pack: chose(4) },
+      ]);
+
+      expect(await priceOf(db, receipt.lines[0]!.id)).toEqual(['role', 200_000, 8]);
+      expect(await priceOf(db, receipt.lines[1]!.id)).toEqual(['role', 250_000, 4]);
+      // the old unsized line is filled once, with the size the batch ended on
+      expect(await priceOf(db, megaLine.id)).toEqual(['role', 400_000, 4]);
+    });
+  });
 });

@@ -101,6 +101,19 @@ describe('suggestMappings', () => {
       expect(mapping?.via).toBe('none');
     });
 
+    it('does not assign an alias remembered for the "unknown" chain: that is any shop nobody recognised', async () => {
+      const { db, milk } = await setup();
+      await rememberMappings(db, 'unknown', [{ rawName: 'LAPTE UHT 1L', productId: milk.id }]);
+
+      const [mapping] = await suggestMappings(
+        db,
+        parsedReceipt('unknown', [{ rawName: 'LAPTE UHT 1L' }]),
+      );
+      expect(mapping?.productId).toBeUndefined();
+      expect(mapping?.via).toBe('fuzzy');
+      expect(mapping?.candidates.map((c) => c.product.id)).toEqual([milk.id]);
+    });
+
     it('wins over an EAN match', async () => {
       const { db, milk } = await setup();
       const other = await createProduct(db, {
@@ -200,6 +213,106 @@ describe('suggestMappings', () => {
       );
       expect(mapping?.productId).toBeUndefined();
       expect(mapping?.candidates.map((c) => c.product.id)).toEqual([product.id]);
+    });
+
+    describe('Mega Image prints 12 digits, METRO and the others 13', () => {
+      const metroCode = '5949065034825';
+      const megaPrint = '594906503482'; // the same code without its check digit
+      const mega = (ean: string) => parsedReceipt('mega-image', [{ rawName: 'CARE HARTIE', ean }]);
+
+      it('joins the 12-digit print with the 13-digit code that completes it', async () => {
+        const { db } = await setup();
+        const paper = await createProduct(db, {
+          name: 'Hârtie igienică',
+          categoryId: GROCERY,
+          baseUnit: 'role',
+          ean: metroCode,
+        });
+        const [mapping] = await suggestMappings(db, mega(megaPrint));
+        expect(mapping).toMatchObject({ productId: paper.id, via: 'ean' });
+      });
+
+      it('and the other way round: the product knows the truncated print, METRO prints it whole', async () => {
+        const { db } = await setup();
+        const paper = await createProduct(db, {
+          name: 'Hârtie igienică',
+          categoryId: GROCERY,
+          baseUnit: 'role',
+          ean: megaPrint,
+        });
+        const [mapping] = await suggestMappings(
+          db,
+          parsedReceipt('metro', [{ rawName: 'FL H IG ALBA', ean: metroCode }]),
+        );
+        expect(mapping).toMatchObject({ productId: paper.id, via: 'ean' });
+      });
+
+      it('also finds it through an alias another chain learned, with its pack size', async () => {
+        const { db, milk } = await setup();
+        await rememberMappings(db, 'metro', [
+          {
+            rawName: 'FL H IG ALBA',
+            ean: metroCode,
+            productId: milk.id,
+            pack: { qty: 8, unit: 'role' },
+          },
+        ]);
+        const [mapping] = await suggestMappings(db, mega(megaPrint));
+        expect(mapping).toMatchObject({
+          productId: milk.id,
+          via: 'ean',
+          pack: { qty: 8, unit: 'role' },
+        });
+      });
+
+      it('does not join a 13-digit code whose check digit is wrong: a misread is not an article', async () => {
+        const { db } = await setup();
+        await createProduct(db, {
+          name: 'Alt articol',
+          categoryId: GROCERY,
+          baseUnit: 'role',
+          ean: '5949065034821',
+        });
+        // a name that resembles nothing, so only the code could have matched
+        const [mapping] = await suggestMappings(
+          db,
+          parsedReceipt('mega-image', [{ rawName: 'ZZZ QQQ', ean: megaPrint }]),
+        );
+        expect(mapping).toEqual({ via: 'none', candidates: [] });
+      });
+
+      it('prefers an exact print over the other spelling of a code', async () => {
+        const { db } = await setup();
+        const exact = await createProduct(db, {
+          name: 'Cafea',
+          categoryId: GROCERY,
+          baseUnit: 'buc',
+          ean: megaPrint,
+        });
+        await createProduct(db, {
+          name: 'Hârtie igienică',
+          categoryId: GROCERY,
+          baseUnit: 'role',
+          ean: metroCode,
+        });
+        const [mapping] = await suggestMappings(db, mega(megaPrint));
+        expect(mapping).toMatchObject({ productId: exact.id, via: 'ean' });
+      });
+    });
+
+    it('never assigns on a placeholder of zeros', async () => {
+      const { db } = await setup();
+      await createProduct(db, {
+        name: 'Fără cod',
+        categoryId: GROCERY,
+        baseUnit: 'buc',
+        ean: '0000000000000',
+      });
+      const [mapping] = await suggestMappings(
+        db,
+        parsedReceipt('lidl', [{ rawName: 'ALTCEVA', ean: '0000000000000' }]),
+      );
+      expect(mapping).toEqual({ via: 'none', candidates: [] });
     });
   });
 

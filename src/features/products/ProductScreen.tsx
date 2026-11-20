@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { ProductPriceSummary } from '@/analytics';
 import { formatLei } from '@/domain';
@@ -7,7 +7,7 @@ import { SaleTag, UnitPrice } from './badges';
 import { buildChartData } from './chart-data';
 import { formatDay, paidEach, unitLabel } from './format';
 import { MergePanel } from './MergePanel';
-import { Failure, Loading } from './notices';
+import { ChartBoundary, Failure, Loading } from './notices';
 import { PriceComparison } from './PriceComparison';
 import { PriceFilters } from './PriceFilters';
 import { PriceHistory } from './PriceHistory';
@@ -20,8 +20,8 @@ import { useDb, useDbQuery } from './useLive';
 const PriceChart = lazy(() => import('./PriceChart'));
 
 function Highlight({ summary }: { summary: ProductPriceSummary }) {
-  const { cheapest, baseUnit, windowDays } = summary;
-  if (!cheapest) return null;
+  const { cheapest, onlyAt, baseUnit, windowDays } = summary;
+  if (!cheapest || onlyAt) return null; // one store only: nothing to compare (plan §7.6)
   return (
     <p className="mt-2 rounded-lg bg-teal-50 p-3 text-sm text-teal-950 dark:bg-teal-950 dark:text-teal-100">
       Cel mai ieftin în ultimele {windowDays} de zile: <strong>{cheapest.storeName}</strong>,{' '}
@@ -48,15 +48,17 @@ function ChartSection({ summary }: { summary: ProductPriceSummary }) {
             role="img"
             aria-label={`Prețul pe ${unitLabel(baseUnit)} în timp, ${data.series.length} ${data.series.length === 1 ? 'magazin' : 'magazine'}`}
           >
-            <Suspense
-              fallback={
-                <p role="status" className={muted}>
-                  Se încarcă graficul…
-                </p>
-              }
-            >
-              <PriceChart data={data} />
-            </Suspense>
+            <ChartBoundary>
+              <Suspense
+                fallback={
+                  <p role="status" className={muted}>
+                    Se încarcă graficul…
+                  </p>
+                }
+              >
+                <PriceChart data={data} />
+              </Suspense>
+            </ChartBoundary>
           </figure>
           <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {data.series.map((series) => (
@@ -121,6 +123,8 @@ function ProductPage({ productId }: { productId: string }) {
   const page = useDbQuery(load);
   const [panel, setPanel] = useState<'merge' | 'split'>();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const mergeButton = useRef<HTMLButtonElement>(null);
+  const splitButton = useRef<HTMLButtonElement>(null);
 
   if (page.status === 'error') {
     return <Failure>Nu am putut deschide datele de pe acest dispozitiv.</Failure>;
@@ -134,9 +138,19 @@ function ProductPage({ productId }: { productId: string }) {
   const { summary, category, categories, windowDays, excludeSales } = page.value;
   const { product } = summary;
 
+  // The trigger buttons stay mounted, so closing a panel can hand the focus back to its button.
   const closePanel = () => {
+    const trigger = panel === 'merge' ? mergeButton : splitButton;
     setPanel(undefined);
     setSelected(new Set());
+    trigger.current?.focus();
+  };
+  const openPanel = (next: 'merge' | 'split') => {
+    if (panel === next) closePanel();
+    else {
+      setPanel(next);
+      setSelected(new Set());
+    }
   };
   const toggle = (lineId: string) =>
     setSelected((previous) => {
@@ -174,21 +188,27 @@ function ProductPage({ productId }: { productId: string }) {
       />
       <Incomparable summary={summary} />
 
-      {panel === undefined && (
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={button} onClick={() => setPanel('merge')}>
-            Îmbină cu alt produs
-          </button>
-          <button
-            type="button"
-            className={button}
-            onClick={() => setPanel('split')}
-            disabled={summary.observations.length === 0}
-          >
-            Separă achiziții
-          </button>
-        </div>
-      )}
+      <div className="flex flex-wrap gap-2">
+        <button
+          ref={mergeButton}
+          type="button"
+          className={button}
+          aria-expanded={panel === 'merge'}
+          onClick={() => openPanel('merge')}
+        >
+          Îmbină cu alt produs
+        </button>
+        <button
+          ref={splitButton}
+          type="button"
+          className={button}
+          aria-expanded={panel === 'split'}
+          onClick={() => openPanel('split')}
+          disabled={summary.observations.length === 0}
+        >
+          Separă achiziții
+        </button>
+      </div>
       {panel === 'merge' && <MergePanel db={db} product={product} onCancel={closePanel} />}
       {panel === 'split' && (
         <SplitPanel

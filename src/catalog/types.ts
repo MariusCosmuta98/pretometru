@@ -23,7 +23,7 @@ export interface MappingCandidate {
  * What the catalog knows about one printed receipt line (see `suggestMappings`).
  *
  * - `alias` / `ean`: `productId` is set (the matched product is also `candidates[0]` with score 1)
- *   together with the product's `categoryId`.
+ *   together with the product's `categoryId` (when that category still exists).
  * - `fuzzy`: no product is assigned; `candidates` holds likely products for a human to confirm.
  *   `categoryId` is still filled from the receipt's section header when it maps to a category.
  * - `category-hint`: no product and no candidates, but the section header gave a `categoryId`.

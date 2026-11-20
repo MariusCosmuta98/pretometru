@@ -9,7 +9,13 @@ import { saveTestReceipt } from '@/catalog/testing';
 import { NOW, HOUSEHOLD, seedWorld } from './testing';
 
 // uPlot draws on a canvas, which jsdom does not have: the chart itself is checked in a real browser.
-vi.mock('./PriceChart', () => ({ default: () => <div data-testid="price-chart" /> }));
+const chart = vi.hoisted(() => ({ fails: false }));
+vi.mock('./PriceChart', () => ({
+  default: () => {
+    if (chart.fails) throw new Error('the chunk is not cached');
+    return <div data-testid="price-chart" />;
+  },
+}));
 
 function renderProduct(productId: string) {
   const router = createMemoryRouter(
@@ -24,12 +30,14 @@ function renderProduct(productId: string) {
 }
 
 beforeEach(() => {
+  chart.fails = false;
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
 });
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 const heading = (name: string) => screen.findByRole('heading', { level: 2, name });
@@ -45,7 +53,7 @@ describe('Product screen', () => {
     expect(highlight.textContent).toContain('reducere');
     expect(highlight.textContent).toContain('(20.09.2026)');
 
-    const table = screen.getByRole('table', { name: /Prețul pe role la fiecare magazin/ });
+    const table = screen.getByRole('table', { name: /Prețul pe rolă la fiecare magazin/ });
     const rows = within(table).getAllByRole('row').slice(1); // after the header
     expect(rows.map((row) => within(row).getAllByRole('rowheader')[0]?.textContent)).toEqual([
       'METROcel mai ieftin',
@@ -83,9 +91,37 @@ describe('Product screen', () => {
     await heading('Lapte UHT');
 
     expect(screen.getByText(/Cumpărat doar la/).textContent).toContain('Kaufland');
+    expect(screen.queryByText(/Cel mai ieftin în ultimele/)).toBeNull(); // nothing to compare
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getByText('Graficul apare după a doua achiziție.')).toBeTruthy();
     expect(screen.queryByTestId('price-chart')).toBeNull();
+  });
+
+  it('counts an unsized purchase at another store: then it is not "only at" one store', async () => {
+    const { db, milk } = await seedWorld();
+    await saveTestReceipt(db, {
+      chain: 'lidl',
+      purchasedAt: '2026-11-10T12:00',
+      lines: [{ rawName: 'LAPTE', lineTotalBani: 550, productId: milk.id }],
+    });
+    renderProduct(milk.id);
+    await heading('Lapte UHT');
+
+    expect(screen.queryByText(/Cumpărat doar la/)).toBeNull();
+    expect(
+      await screen.findByRole('region', { name: /nu intră în comparație \(1\)/ }),
+    ).toBeTruthy();
+  });
+
+  it('keeps the page usable when the chart cannot load', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    chart.fails = true;
+    const { paper } = await seedWorld();
+    renderProduct(paper.id);
+
+    expect(await screen.findByText(/Graficul nu a putut fi încărcat/)).toBeTruthy();
+    expect(screen.getByRole('table', { name: /Prețul pe rolă/ })).toBeTruthy(); // the rest is there
+    expect(screen.getByRole('region', { name: /Istoric/ })).toBeTruthy();
   });
 
   it('sets purchases without a pack size aside instead of comparing them', async () => {
@@ -175,6 +211,28 @@ describe('Product screen', () => {
       )
       .count();
     expect(moved).toBe(1);
+  });
+
+  it('opens and closes the merge and split panels from their own buttons, keeping the focus there', async () => {
+    const { paper } = await seedWorld();
+    renderProduct(paper.id);
+    await heading('Hârtie igienică');
+    const merge = screen.getByRole('button', { name: 'Îmbină cu alt produs' });
+    const split = screen.getByRole('button', { name: 'Separă achiziții' });
+    expect(merge.getAttribute('aria-expanded')).toBe('false');
+
+    merge.focus();
+    fireEvent.click(merge);
+    expect(merge.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('region', { name: 'Îmbină cu alt produs' })).toBeTruthy();
+
+    fireEvent.click(split); // switching panels
+    expect(screen.queryByRole('region', { name: 'Îmbină cu alt produs' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Separă achiziții' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Renunță' }));
+    expect(screen.queryByRole('region', { name: 'Separă achiziții' })).toBeNull();
+    expect(document.activeElement).toBe(split);
   });
 
   it('does not offer to split a product that was never bought', async () => {

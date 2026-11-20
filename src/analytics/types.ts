@@ -104,7 +104,7 @@ export interface ProductPriceSummary {
    * purchase was dearer than the best known one; 0: it was the best). Absent without both.
    */
   cheapestVsLastPct?: number;
-  /** Set when every purchase ever was at one store: no comparison is possible (plan §7.6). */
+  /** Set when every purchase ever, in any unit, was at one store: no comparison is possible (plan §7.6). */
   onlyAt?: { storeId: string; storeName: string; chain: Chain };
   /** Latest price versus the previous purchase at the same store. */
   change?: PriceChange;

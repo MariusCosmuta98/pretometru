@@ -53,7 +53,9 @@ export function summarizeProduct(
 
   const first = stores[0];
   const lastPurchase = observations.at(-1);
-  const everyStore = new Map(observations.map((purchase) => [purchase.storeId, purchase]));
+  // "Only at" looks at every purchase ever, in any unit: an unsized one at another store still
+  // shows the product is sold there.
+  const everyStore = new Map(mine.map((purchase) => [purchase.storeId, purchase]));
   const [single] = everyStore.values();
 
   return {

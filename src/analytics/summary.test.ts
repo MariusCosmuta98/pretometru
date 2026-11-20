@@ -107,6 +107,19 @@ describe('summarizeProduct', () => {
     expect(summary.incomparable).toEqual([unsized]);
   });
 
+  it('counts an unsized purchase at another store when deciding "only at"', () => {
+    const unsizedElsewhere = paid('mega-image', '2026-11-03', 1_600_000, {
+      productId: roll.id,
+      baseUnit: 'buc',
+    });
+    const summary = summarizeProduct(
+      roll,
+      [mine(paid('metro', '2026-11-01', 130_000)), unsizedElsewhere],
+      { now },
+    );
+    expect(summary.onlyAt).toBeUndefined(); // it was bought at METRO and at Mega
+  });
+
   it('only takes the purchases of its own product', () => {
     const other = observation({ productId: 'something-else' });
     expect(summarizeProduct(roll, [other], { now }).observations).toEqual([]);
