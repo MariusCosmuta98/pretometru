@@ -73,16 +73,19 @@ describe('sanitizePdfText', () => {
   const rules = [
     {
       name: 'buyer',
+      data: 'personal' as const,
       when: (row: { text: string }) => row.text.startsWith('Buyer:'),
       apply: 'mask' as const,
     },
     {
       name: 'client',
+      data: 'personal' as const,
       when: (row: { text: string }) => row.text.includes('client'),
       apply: 'mask' as const,
     },
     {
       name: 'bon',
+      data: 'identifiers' as const,
       when: (row: { text: string }) => row.text.startsWith('Bon:'),
       apply: 'zero-digits' as const,
     },
@@ -111,24 +114,44 @@ describe('sanitizePdfText', () => {
     const original = fakeReceipt();
     const before = JSON.stringify(original);
     const { source } = sanitizePdfText(original, [
-      { name: 'zero', when: (row) => row.text.startsWith('Bon:'), apply: 'zero-digits' },
-      { name: 'mask', when: (row) => row.text.startsWith('Bon:'), apply: 'mask', optional: true },
+      {
+        name: 'zero',
+        data: 'identifiers',
+        when: (row) => row.text.startsWith('Bon:'),
+        apply: 'zero-digits',
+      },
+      {
+        name: 'mask',
+        data: 'identifiers',
+        when: (row) => row.text.startsWith('Bon:'),
+        apply: 'mask',
+        optional: true,
+      },
     ]);
 
     expect(JSON.stringify(original)).toBe(before);
     expect(source.pages[0]!.items[6]?.str).toBe('Bon:00000');
   });
 
-  it('reports the original text of every changed item, and only those', () => {
+  it('reports the original text of every changed item with how sensitive its rule is', () => {
     const { removed } = sanitizePdfText(fakeReceipt(), rules);
 
-    expect(removed.sort()).toEqual(['Bon:26351', 'Buyer:', 'Ion Popescu', CLIENT_LINE].sort());
+    expect(removed).toHaveLength(4);
+    expect(removed).toEqual(
+      expect.arrayContaining([
+        { text: 'Buyer:', data: 'personal' },
+        { text: 'Ion Popescu', data: 'personal' },
+        { text: CLIENT_LINE, data: 'personal' },
+        { text: 'Bon:26351', data: 'identifiers' },
+      ]),
+    );
   });
 
   it('accepts a function rule that rewrites the strings of one row', () => {
     const { source } = sanitizePdfText(fakeReceipt(), [
       {
         name: 'milk',
+        data: 'business',
         when: (row) => row.text.startsWith('MILK'),
         apply: (strings) =>
           strings.map((value, index) => (index === 1 ? zeroDigits(value) : value)),
@@ -161,7 +184,12 @@ describe('row predicates', () => {
 
 describe('sanitizePdfText: drift guard', () => {
   it('fails loudly when a rule matches no row, unless it is optional', () => {
-    const never = { name: 'buyer block', when: () => false, apply: 'mask' as const };
+    const never = {
+      name: 'buyer block',
+      data: 'personal' as const,
+      when: () => false,
+      apply: 'mask' as const,
+    };
 
     expect(() => sanitizePdfText(fakeReceipt(), [never])).toThrow(/buyer block/);
     expect(() => sanitizePdfText(fakeReceipt(), [{ ...never, optional: true }])).not.toThrow();
@@ -169,13 +197,20 @@ describe('sanitizePdfText: drift guard', () => {
 });
 
 describe('denylistTerms', () => {
-  it('keeps distinctive words and numbers, folded, and drops short or still-visible ones', () => {
+  it('collects words and numbers of personal text, only digit-bearing tokens of identifiers, nothing of business text', () => {
     const terms = denylistTerms(
-      ['Ion Popescu', CLIENT_LINE, 'Str. Țării 12, Cluj'],
+      [
+        { text: 'Ion Popescu', data: 'personal' },
+        { text: CLIENT_LINE, data: 'personal' },
+        { text: 'Str. Țării 12, Cluj', data: 'personal' },
+        { text: 'Plata aprobata AUTH123456', data: 'identifiers' },
+        { text: 'Conditii generale de vanzare', data: 'business' },
+      ],
       ['METRO Cluj', 'MILK 1L'],
     );
 
-    expect(terms.sort()).toEqual(['4821937', 'client', 'popescu', 'tarii'].sort());
+    // folded; `cluj` is still visible in the kept text, `ion`/`str` are too short
+    expect(terms.sort()).toEqual(['4821937', 'auth123456', 'client', 'popescu', 'tarii'].sort());
   });
 });
 

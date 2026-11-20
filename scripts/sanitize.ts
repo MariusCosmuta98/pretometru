@@ -79,9 +79,23 @@ export interface RowInfo {
   rows: readonly string[];
 }
 
+/**
+ * How sensitive the text a rule removes is; it decides what the private denylist learns from it.
+ * Masked boilerplate (a legal footer) must not teach it ordinary words, or every later file that
+ * uses the same Romanian word would be flagged.
+ */
+export type DataKind =
+  /** Names, addresses and numbers of a person: every word and number is denylisted. */
+  | 'personal'
+  /** Card, loyalty, authorisation or barcode numbers: only tokens that contain a digit. */
+  | 'identifiers'
+  /** Business data or boilerplate masked for safety or noise: nothing is denylisted. */
+  | 'business';
+
 export interface PdfRule {
   /** Shown when the rule matches nothing. */
   name: string;
+  data: DataKind;
   when: (row: RowInfo) => boolean;
   apply: 'mask' | 'zero-digits' | RowTransform;
   /** Rules must match at least one row, so a drifting extraction fails loudly instead of leaking. */
@@ -114,10 +128,15 @@ export function immediatelyAfter(anchor: RegExp): (row: RowInfo) => boolean {
   };
 }
 
+export interface Removed {
+  text: string;
+  data: DataKind;
+}
+
 export interface SanitizeResult<S> {
   source: S;
-  /** Original text of every item that was changed. */
-  removed: string[];
+  /** Original text of every item that was changed, with the sensitivity of the rule that changed it. */
+  removed: Removed[];
 }
 
 function transformRow(apply: PdfRule['apply'], strings: string[]): string[] {
@@ -131,7 +150,7 @@ export function sanitizePdfText(
   source: PdfSource,
   rules: readonly PdfRule[],
 ): SanitizeResult<PdfSource> {
-  const removed: string[] = [];
+  const removed: Removed[] = [];
   const matches = new Map<PdfRule, number>();
 
   const pages = source.pages.map((page, pageIndex) => {
@@ -155,7 +174,7 @@ export function sanitizePdfText(
         const target = items[itemIndex];
         const next = rewritten[position];
         if (!target || next === undefined || next === target.str) return;
-        removed.push(target.str);
+        removed.push({ text: target.str, data: rule.data });
         target.str = next;
       });
     });
@@ -183,12 +202,20 @@ function tokensOf(text: string): string[] {
 }
 
 /**
- * Distinctive words and numbers of the removed text (folded to lower case, no diacritics), minus
- * anything that is still visible in the kept text.
+ * Words and numbers of the removed text that belong on the private denylist (folded to lower case,
+ * no diacritics), minus anything that is still visible in the kept text. See `DataKind`.
  */
-export function denylistTerms(removed: readonly string[], kept: readonly string[]): string[] {
+export function denylistTerms(removed: readonly Removed[], kept: readonly string[]): string[] {
   const visible = new Set(kept.flatMap(tokensOf));
-  return [...new Set(removed.flatMap(tokensOf).filter((token) => !visible.has(token)))];
+  const terms = new Set<string>();
+  for (const { text, data } of removed) {
+    if (data === 'business') continue;
+    for (const token of tokensOf(text)) {
+      if (data === 'identifiers' && !/\d/.test(token)) continue;
+      if (!visible.has(token)) terms.add(token);
+    }
+  }
+  return [...terms];
 }
 
 function formatValue(value: unknown, indent: string): string {

@@ -49,16 +49,19 @@ const KAUFLAND_RECIPE: PdfRecipe = {
   rules: [
     {
       name: 'loyalty card number',
+      data: 'identifiers',
       when: ({ text }) => /^Kaufland Card/i.test(text),
       apply: 'zero-digits',
     },
     {
       name: 'card slip',
+      data: 'identifiers',
       when: between(/^Kaufland Card/i, /^Garan[țt]ie ambalaje/i),
       apply: 'mask',
     },
     {
       name: 'receipt number',
+      data: 'identifiers',
       when: ({ text }) => /\bBon:\d+/.test(text),
       apply: (strings) =>
         strings.map((text) =>
@@ -70,11 +73,13 @@ const KAUFLAND_RECIPE: PdfRecipe = {
     },
     {
       name: 'cashier number',
+      data: 'identifiers',
       when: ({ text }) => /Casier:/.test(text),
       apply: zeroAfter(/Casier:/),
     },
     {
       name: 'basket barcode',
+      data: 'identifiers',
       when: ({ text }) => /^\d{20,}$/.test(text),
       apply: 'zero-digits',
     },
@@ -90,11 +95,22 @@ const METRO_RECIPE: PdfRecipe = {
   kind: 'pdf-text',
   extraction: 'metro-invoice-2026-08-12.pdf-text.json',
   rules: [
-    { name: 'seller phones', when: immediatelyAfter(/Data Emitere/i), apply: 'mask' },
-    { name: 'seller bank lines', when: between(/^Capital\s+social/i, /ONRC/i), apply: 'mask' },
-    { name: 'excise line', when: immediatelyAfter(/ONRC/i), apply: 'mask' },
+    {
+      name: 'seller phones',
+      data: 'business',
+      when: immediatelyAfter(/Data Emitere/i),
+      apply: 'mask',
+    },
+    {
+      name: 'seller bank lines',
+      data: 'business',
+      when: between(/^Capital\s+social/i, /ONRC/i),
+      apply: 'mask',
+    },
+    { name: 'excise line', data: 'business', when: immediatelyAfter(/ONRC/i), apply: 'mask' },
     {
       name: 'invoice header',
+      data: 'identifiers',
       when: ({ text }) => /^FACTURA\b/.test(text),
       apply: (strings) => {
         let zero = false;
@@ -115,6 +131,7 @@ const METRO_RECIPE: PdfRecipe = {
     },
     {
       name: 'buyer block',
+      data: 'personal',
       when: ({ index, rows }) => {
         const invoice = rows.findIndex((text) => /^FACTURA\b/.test(text));
         const open = rows.findIndex((text, position) => position > invoice && SEPARATOR.test(text));
@@ -123,7 +140,7 @@ const METRO_RECIPE: PdfRecipe = {
       },
       apply: 'mask',
     },
-    { name: 'legal footer', when: after(/^Card Online/i), apply: 'mask' },
+    { name: 'legal footer', data: 'business', when: after(/^Card Online/i), apply: 'mask' },
   ],
 };
 

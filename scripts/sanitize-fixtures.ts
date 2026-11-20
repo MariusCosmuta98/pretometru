@@ -7,6 +7,9 @@
  * Writes tests/fixtures/real/<id>/source.<kind>.json
  * Writes ~/.pretometru-private/denylist.txt        (the removed words and numbers, for check-leaks)
  *
+ * Without case ids every fixture and the denylist are rebuilt from scratch; with ids only those
+ * cases are rewritten and their terms are merged into the existing denylist.
+ *
  * Prints counts only, never the removed text. Extraction itself needs pdfjs-dist / tesseract.js and
  * is documented in tests/fixtures/README.md.
  */
@@ -62,8 +65,11 @@ function main(): void {
   const recipes = PDF_RECIPES.filter((recipe) => wanted.length === 0 || wanted.includes(recipe.id));
   if (recipes.length === 0) throw new Error('No recipe matches the given case ids');
 
+  // No case ids: rebuild every fixture and the denylist from scratch. With ids: merge into it.
   const terms = new Set(
-    existsSync(denylistPath) ? parseDenylist(readFileSync(denylistPath, 'utf8')) : [],
+    wanted.length === 0 || !existsSync(denylistPath)
+      ? []
+      : parseDenylist(readFileSync(denylistPath, 'utf8')),
   );
   for (const recipe of recipes) {
     const result = sanitizePdf(recipe);

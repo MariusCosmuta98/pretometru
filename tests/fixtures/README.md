@@ -28,11 +28,14 @@ logged. Everything committed here went through the sanitizer:
 ## Producing a fixture from a new receipt
 
 1. Keep the original in `~/.pretometru-private/samples/`.
-2. Extract its text into `~/.pretometru-private/extracted/` (mode 600) as a `ReceiptSource` JSON:
-   - PDF with a text layer: pdf.js `getTextContent()` items as `{ str, x, y, w, h }` in reading order, whitespace
-     items included (`{ kind: 'pdf-text', pages: [{ width, height, items }] }`).
+2. Extract its text into `~/.pretometru-private/extracted/` (mode 600) as a `ReceiptSource` JSON (`pdfjs-dist` and
+   `tesseract.js` are app dependencies, so `npm ci` is enough):
+   - PDF with a text layer: pdf.js `getTextContent()` (`pdfjs-dist/legacy/build/pdf.mjs` under Node), one entry per
+     page with the viewport `width` and `height` and the items as
+     `{ str: item.str, x: item.transform[4], y: item.transform[5], w: item.width, h: item.height }`, in the order
+     pdf.js returns them, empty strings dropped and whitespace-only items kept (their `h` is 0). The `src/import/pdf`
+     adapter must produce this same shape.
    - Image: Tesseract.js output as `{ kind: 'ocr-text', text, lines: [{ text, confidence, bbox }], confidence, imageSize }`.
-   - The extraction libraries are not dependencies: `npm install --no-save pdfjs-dist tesseract.js`.
 3. Add a recipe to `scripts/fixture-recipes.ts`: rows are selected by label or position (never by value), then masked
    or rewritten. A rule that matches nothing fails the run, so a drifting extraction cannot leak silently.
 4. `node scripts/sanitize-fixtures.ts <id>` writes `real/<id>/source.<kind>.json` and appends the removed words and
