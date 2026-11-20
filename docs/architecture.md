@@ -58,7 +58,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
 | `src/ui/`                    | shared presentational components, icons, and what the data screens share: the live-query hooks (`live.ts`), `Loading`/`Failure` (`states.tsx`), `ConfirmPanel`, `plural` (§15); `insights/`: the formatting, bars, price-increase list and day hook of the Home and Statistics screens (§5e) | shared (additive edits)               |
 | `config/`                    | build-time helpers (CSP plugin, OCR asset copy, the offline guard, §14); Node only, never bundled | `scaffold-pwa`; `ocr-assets*`: `ocr-pipeline`; `offline-guard*`: `pwa-offline-share` |
-| `e2e/`                       | Playwright browser checks of the production build (`npm run e2e`, §14); not part of `check` or CI yet | `pwa-offline-share` (base for `qa-hardening`) |
+| `e2e/`                       | Playwright browser checks of the production build (`npm run e2e`, §14); required in CI before Pages upload | `pwa-offline-share`, `qa-hardening` |
 | `scripts/`                   | Node scripts: leak check (`check-leaks.ts`), fixture sanitizer; the local OCR benchmark (`ocr-bench.ts`, §11) | `sample-fixtures`; `ocr-bench*` : `ocr-pipeline` |
 | `tests/`                     | cross-cutting tests (`tests/fixtures.test.ts`)                       | shared                                |
 | `tests/fixtures/`            | sanitized real samples, synthetic cases, typed loader (see §7)       | `sample-fixtures` (others: read only) |
@@ -619,7 +619,7 @@ Conventions every case follows (checked by `tests/fixtures.test.ts`):
 | `npm run build` / `npm run preview`                | production build / serve it at <http://localhost:4173/pretometru/> |
 | `npm run check:leaks`                              | leak scan of every tracked file (also the pre-commit hook and a CI step) |
 | `npm run ocr:bench`                                | local OCR benchmark on the private originals (not part of `check` or CI, §11) |
-| `npm run e2e`                                      | builds, then runs the Playwright specs of `e2e/` in a mobile Chromium against `dist/` (not part of `check` or CI, §14) |
+| `npm run e2e`                                      | builds, then runs the Playwright specs of `e2e/` in a mobile Chromium against `dist/` (separate from `check`, required in CI, §14) |
 | `npm run check`                                    | leaks + lint + typecheck + test + build (the pre-push gate) |
 
 Git flow (trunk-based): branch, `git fetch && git rebase origin/main`, `npm run check`, `git push origin HEAD:main`.
@@ -1067,8 +1067,8 @@ whole file into a stress test, both off unless set: `VITE_SYNC_TEST_LATENCY_MS=1
 `VITE_SYNC_TEST_LATENCY_MS=150 npx vitest run src/features/sync`. Run a few of those concurrently when a test is
 suspected of being flaky.
 
-**Browser check.** `e2e/sync.spec.ts` (`E2E_CHANNEL=chrome npx playwright test e2e/sync.spec.ts` after `npm run build`; not
-part of `check` or CI, like the other e2e specs, §14) runs the **production build** in Chrome with `api.github.com`
+**Browser check.** `e2e/sync.spec.ts` (`npx playwright test e2e/sync.spec.ts` after `npm run build`; see §14) runs the
+**production build** in Chromium with `api.github.com`
 answered by the same `MockGitHub` through `page.route`: the instructions, the checks, a first sync, a changed record
 sent by "Sincronizează acum", the automatic sync that a fresh page load starts by itself, a repository that turned
 public being refused, disconnecting, and the passphrase flow (encrypted in the real IndexedDB, locked after a restart).
@@ -1163,8 +1163,10 @@ bonul" (the rear camera on a phone, the file picker elsewhere). Checked in the b
 `e2e/support/pages-server.ts`: like GitHub Pages (files below the base only, no `index.html` fallback, no POST) but
 `no-store`, because with a fresh copy in the HTTP cache an offline check would pass even if the worker had not stored a file
 (a lazy chunk deleted from the precache is detected). Install the browser once with `npx playwright install chromium`, or set
-`E2E_CHANNEL=chrome` to use the installed Google Chrome (both pass). Not part of `npm run check` or CI; it is the base for the
-QA phase. Inputs are made on the fly from the fixtures (`e2e/support/samples.ts`: a text PDF with the Kaufland items, a canvas
+`E2E_CHANNEL=chrome` to use the installed Google Chrome. The CI `verify` job installs Playwright Chromium with its system
+dependencies and tests the same `dist/` that it uploads to Pages. Browser failures block deployment; CI does not collect
+traces, and the private OCR benchmark remains local. Inputs are made on the fly from the fixtures
+(`e2e/support/samples.ts`: a text PDF with the Kaufland items, a canvas
 photo of the Lidl text; `seed.ts`: price history written into IndexedDB; `dashboard-seed.ts`: the receipts of the Home and
 Statistics screens), so nothing binary is committed.
 
@@ -1172,14 +1174,20 @@ Statistics screens), so nothing binary is committed.
 | --- | --- |
 | `offline.spec.ts` | the install stores the shell and not the engines; every navigation route, a receipt, a product with its chart and an unknown route render offline with IndexedDB data and no failed request or script error; a returning visit opens offline; the camera input |
 | `engines.spec.ts` | a PDF and a photo (OCR, then the Lidl parser) import offline after the first use of each engine, and after "Descarcă acum" with no earlier use; without either, the error names the cause |
-| `share-target.spec.ts` | the manifest has no Chrome errors; a share POST imports (also offline); several files are listed; an empty or expired share leaves the screen usable |
+| `share-target.spec.ts` | Chromium reports no manifest or installability errors; a share POST imports (also offline); several files are listed; an empty or expired share leaves the screen usable |
 | `update.spec.ts` | an update installs in the background, the page and a reload stay on the old version until "Actualizează", the engine caches survive, the new version works offline |
 | `persistence.spec.ts` | state and retry in Settings; the ask happens once after the first confirmed receipt and later visits do not even load the watcher |
 | `admin.spec.ts` | Settings shows the Categorii, Magazine and Copie de siguranță cards and both screens open; an export downloads a dated `*.pretometru-backup.json` that imports back (preview, merge, replace after its question; a newer format and a non-backup are refused in Romanian) with no request leaving the origin and no console or CSP error; deleting a category moves its products (the product list shows them in the new one); merging two stores moves the receipts (§15) |
 | `dashboard.spec.ts` | Home and Statistics (§5e) with the clock fixed at 20.11.2026: the first-run state on both; the numbers of a seeded device (this month against the previous one, categories with the voucher row, last receipts with a draft and a future date, a price increase) and links to the review and the product; the bars are drawn under the CSP of the build; Statistics over 6 months, 3 months and "Tot" with the future receipt, offline and with no failed request or script error (`support/dashboard-seed.ts` writes the receipts) |
+| `journey.spec.ts` | two synthetic receipts go through import, review, product mapping and confirmation; their amounts drive the cheapest-store order and list estimate; a cold offline navigation preserves those values and a checked item; axe checks WCAG 2.2 AA rules on import, review, comparison and the populated list |
 | `ai.spec.ts` | the optional Gemini reading (§16), with `generativelanguage.googleapis.com` answered by `MockGemini`: with the feature off nothing is sent to Google and no engine chunk is requested (through Settings, a photo import and its review); switched on, the connection test sends only a `GET` of the model, a 12 megapixel photo leaves as a JPEG of at most 3.5 megapixels without EXIF and with the key in a header, the reading replaces the wrong one and is saved only on Save; failures are Romanian messages and offline nothing is attempted |
 
 ### Limits
+
+Lighthouse 13.6.0 has no PWA category. On the local production build, its mobile navigation audit of Home scored
+100 for accessibility and 96 for best practices (a CSP inspector issue). That is not an installability score:
+the browser checks instead verify manifest and installability diagnostics, active service-worker control and actual offline
+navigations. The automated accessibility checks do not substitute for manual accessibility testing.
 
 Checked once on the deployed site (headless Chrome, GitHub Pages): the worker installs and controls the page, the manifest
 has no errors, the pdf.js worker is served as `text/javascript`, and a PDF imports offline after its first use with every

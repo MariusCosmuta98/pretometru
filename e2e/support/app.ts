@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 /** The Vite base the e2e build is served under (GitHub Pages serves the project at /<repo>/). */
 export const BASE = '/pretometru/';
@@ -9,10 +9,24 @@ export const BASE = '/pretometru/';
  */
 export async function openApp(page: Page, route = ''): Promise<void> {
   await page.goto(`${BASE}${route === '' ? '' : `#/${route}`}`);
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const worker = navigator.serviceWorker;
+          if (!worker) return 'unavailable';
+          if (worker.controller) return 'controlling';
+          const registration = await worker.getRegistration();
+          return (
+            registration?.active?.state ??
+            registration?.waiting?.state ??
+            registration?.installing?.state ??
+            'unregistered'
+          );
+        }),
+      { message: 'the installed service worker must control the page' },
+    )
+    .toBe('controlling');
 }
 
 /** Names of the Cache API caches of the origin. */

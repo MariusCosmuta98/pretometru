@@ -187,7 +187,7 @@ export function LineEditor({
               aria-label={`${product ? 'Schimbă produsul' : 'Alege produsul'}, linia ${number}`}
               onClick={onPickProduct}
             >
-              {product ? 'Schimbă' : 'Alege produs'}
+              {product ? 'Schimbă' : 'Alege produsul'}
             </button>
           </div>
           {candidates.length > 0 ? (

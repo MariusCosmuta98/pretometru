@@ -38,10 +38,13 @@ test.describe('Web Share Target', () => {
     page,
     context,
   }) => {
-    await page.goto(BASE);
+    await openApp(page);
     const client = await context.newCDPSession(page);
     const { errors, data } = await client.send('Page.getAppManifest');
+    const { installabilityErrors } = await client.send('Page.getInstallabilityErrors');
     const manifest = JSON.parse(data ?? '{}') as {
+      name: string;
+      short_name: string;
       scope: string;
       start_url: string;
       display: string;
@@ -49,6 +52,9 @@ test.describe('Web Share Target', () => {
     };
 
     expect(errors, 'what Chrome says about the manifest').toEqual([]);
+    expect(installabilityErrors, 'what Chrome says about installability').toEqual([]);
+    expect(manifest.name).toBe('Pretometru');
+    expect(manifest.short_name).toBe('Pretometru');
     expect(manifest.display).toBe('standalone');
     expect(manifest.share_target).toEqual({
       action: `${BASE}share-target`,
