@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "chain": "mega-image",
+  "docType": "receipt",
+  "purchasedAt": "2026-11-03T16:57:08",
+  "currency": "RON",
+  "totals": { "grandTotalBani": 6586 },
+  "lines": [
+    { "idx": 0, "rawName": "ALWAYS ULTRA 16BUC", "kind": "product", "ean": "401540000675", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1785, "pack": { "qty": 16, "unit": "buc" } },
+    { "idx": 1, "rawName": "C2JU CRUDE 20CG", "kind": "product", "ean": "853042107579", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1499 },
+    { "idx": 2, "rawName": "EMM: NUCI 200G", "kind": "product", "ean": "853042107549", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1299, "pack": { "qty": 200, "unit": "g" } },
+    { "idx": 3, "rawName": "CARE HARTIE LCR 3S", "kind": "product", "ean": "534506503482", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1893 }
+  ],
+  "meta": {
+    "engine": "fixture",
+    "parser": "ground-truth",
+    "parserVersion": "1.0.0",
+    "warnings": [{ "code": "SUM_MISMATCH", "message": "Suma liniilor diferă de total cu 1,10 lei." }]
+  }
+}

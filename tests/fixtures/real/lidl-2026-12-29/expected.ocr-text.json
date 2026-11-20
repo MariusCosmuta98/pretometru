@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "chain": "lidl",
+  "storeName": "S.C. LIDL DISCOUNT S.R.L.",
+  "branch": { "city": "Cluj-Napoca" },
+  "docType": "receipt",
+  "purchasedAt": "2026-12-29T17:12:38",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 6167,
+    "paidBani": 6167,
+    "vat": [
+      { "rate": 21, "vatBani": 591 },
+      { "rate": 11, "vatBani": 273 }
+    ]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "Saci menajeri 68L", "kind": "product", "qty": 2, "qtyUnit": "buc", "unitPriceBani": 405, "lineTotalBani": 810, "vatRate": 21, "vatClass": "A", "pack": { "qty": 68, "unit": "l" } },
+    { "idx": 1, "rawName": "Mascarpone", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 1849, "lineTotalBani": 1849, "vatRate": 11, "vatClass": "B" },
+    { "idx": 2, "rawName": "Buchet lalele 7 fire", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 1999, "lineTotalBani": 1999, "vatRate": 21, "vatClass": "A" },
+    { "idx": 3, "rawName": "Servetele umede univ.", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 599, "lineTotalBani": 599, "vatRate": 21, "vatClass": "A" },
+    { "idx": 4, "rawName": "Smantana 30%", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 910, "lineTotalBani": 910, "vatRate": 11, "vatClass": "B" }
+  ],
+  "meta": {
+    "engine": "fixture",
+    "parser": "ground-truth",
+    "parserVersion": "1.0.0",
+    "warnings": [
+      { "code": "FUTURE_DATE", "message": "Data bonului este în viitor." },
+      { "code": "REPAIRED_DIGITS", "message": "Prețul unitar 9,18 a fost corectat la 9,10 (totalul liniei).", "lineIdx": 4 },
+      { "code": "REPAIRED_DIGITS", "message": "Cota TVA 11,80% a fost corectată la 11%." }
+    ]
+  }
+}

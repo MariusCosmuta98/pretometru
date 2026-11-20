@@ -5,12 +5,14 @@ analytics. Layout, loader API (`@fixtures`) and conventions: [docs/architecture.
 
 ## Cases
 
-| id                         | origin | sources    | covers                                                                                   |
-| -------------------------- | ------ | ---------- | ---------------------------------------------------------------------------------------- |
-| `kaufland-2026-11-07`      | real   | `pdf-text` | sections, `n * price` and weighed lines, deposit, bag, packaging voucher, 3 VAT rates, glued sizes |
-| `metro-invoice-2026-08-12` | real   | `pdf-text` | ex-VAT invoice, per-line discounts, 2 VAT rates, size-first descriptions, online card payment |
+| id                         | origin | sources                    | covers                                                                                   |
+| -------------------------- | ------ | -------------------------- | ---------------------------------------------------------------------------------------- |
+| `kaufland-2026-11-07`      | real   | `pdf-text`                 | sections, `n * price` and weighed lines, deposit, bag, packaging voucher, 3 VAT rates, glued sizes |
+| `metro-invoice-2026-08-12` | real   | `pdf-text`                 | ex-VAT invoice, per-line discounts, 2 VAT rates, size-first descriptions, online card payment |
+| `lidl-2026-12-29`          | real   | `ocr-text`, `pasted-text`  | OCR digit confusions (`68L`, `9,18`, `11,80%`), per-unit `n,000 BUC x price` lines, 3 card payments, **future date** (`FUTURE_DATE`), `expected.ocr-text.json` |
+| `mega-image-2026-11-03`    | real   | `ocr-text`, `pasted-text`  | very noisy OCR (watermark), EAN under each item (12 digits, truncated), chain only from the merchant code, `SUM_MISMATCH` on the OCR text, `expected.ocr-text.json` |
 
-Lidl and Mega Image (`ocr-text` + `pasted-text`) and the synthetic edge cases follow.
+Synthetic edge cases follow.
 
 ## Privacy
 
@@ -37,10 +39,14 @@ logged. Everything committed here went through the sanitizer:
      adapter must produce this same shape.
    - Image: Tesseract.js output as `{ kind: 'ocr-text', text, lines: [{ text, confidence, bbox }], confidence, imageSize }`.
 3. Add a recipe to `scripts/fixture-recipes.ts`: rows are selected by label or position (never by value), then masked
-   or rewritten. A rule that matches nothing fails the run, so a drifting extraction cannot leak silently.
-4. `node scripts/sanitize-fixtures.ts <id>` writes `real/<id>/source.<kind>.json` and appends the removed words and
-   numbers to the private denylist (words that already appear in the repository are dropped from it).
-5. Review the written source in full, then write `expected.json` and `case.json` by hand from the printed receipt.
+   or rewritten, and each rule says what it removes (`personal`, `identifiers` or `business`: only the first two feed the
+   denylist). A rule that matches nothing fails the run, so a drifting extraction cannot leak silently. For an image
+   add `pasted`: the misread lines (by index) and what the receipt actually prints, verified against the image.
+4. `node scripts/sanitize-fixtures.ts <id>` writes `real/<id>/source.<kind>.json` (and `source.pasted-text.json` for
+   an image) and adds the removed words and numbers to the private denylist (words that already appear in the
+   repository are dropped from it). Without ids it rebuilds every fixture, byte-identical to what is committed.
+5. Review the written source in full, then write `expected.json` and `case.json` by hand from the printed receipt
+   (`expected.ocr-text.json` too when misreads make an exact match with the truth impossible).
 6. `npm test` (schemas, arithmetic, warnings, sizes, EAN check digits and "ground truth is readable in the source")
    and `npm run check:leaks`.
 

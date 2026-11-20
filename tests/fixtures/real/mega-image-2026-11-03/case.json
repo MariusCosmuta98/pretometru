@@ -1,0 +1,14 @@
+{
+  "description": "Mega Image receipt: a small low-quality screenshot with a watermark behind the text. Noisy Tesseract output, plus the clean text a Live Text / Lens copy would give.",
+  "origin": "real",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "No store name is printed. The chain cue is the card-slip line `TERMINAL ... COMERCIANT MEGA...` (its digits are masked). Each item is `name price`, followed by its EAN on the next line; the EANs print 12 digits (truncated), kept as printed. No VAT, quantity or payment lines are printed above the slip, so none are in the ground truth.",
+    "source.ocr-text.json is tesseract.js 7 (ron+eng) on a preprocessed copy of the 420x437 screenshot (green channel, 3x Lanczos upscale, normalised, threshold 150), confidence 75. The run on the unprocessed image is unreadable (confidence 29) and is not included.",
+    "Misreads in source.ocr-text.json: line 0 price `17,85` (printed 17,89); line 1 `C2JU CRUDE 20CG` (CAJU CRUDE 200G) and EAN `853042107579` (859042107579); line 4 `EMM:` (EMMA); EAN `853042107549` (859042107549); line 6 `LCR 3S` and price `18,93` (10R 3S, 19,99); EAN `534506503482` (594906503482); date label `DAT?`.",
+    "source.pasted-text.json is the same text with those misreads corrected from the printed receipt.",
+    "expected.json is the truth. expected.ocr-text.json reads the OCR text literally: nothing in it can be repaired by arithmetic, so the lines keep their misreads and carry SUM_MISMATCH (they add up to 64,76 against a printed total of 65,86).",
+    "`CARE HARTIE 10R 3S` has no pack parsePackSize can read; the 10 rolls (2,00 lei per roll, plan section 7) come from the catalog alias default pack.",
+    "The number under TOTAL and the whole card slip (except the merchant-code letters and the date/time line) are masked: letters x, digits 0."
+  ]
+}

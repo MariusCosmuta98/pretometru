@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "chain": "mega-image",
+  "docType": "receipt",
+  "purchasedAt": "2026-11-03T16:57:08",
+  "currency": "RON",
+  "totals": { "grandTotalBani": 6586 },
+  "lines": [
+    { "idx": 0, "rawName": "ALWAYS ULTRA 16BUC", "kind": "product", "ean": "401540000675", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1789, "pack": { "qty": 16, "unit": "buc" } },
+    { "idx": 1, "rawName": "CAJU CRUDE 200G", "kind": "product", "ean": "859042107579", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1499, "pack": { "qty": 200, "unit": "g" } },
+    { "idx": 2, "rawName": "EMMA NUCI 200G", "kind": "product", "ean": "859042107549", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1299, "pack": { "qty": 200, "unit": "g" } },
+    { "idx": 3, "rawName": "CARE HARTIE 10R 3S", "kind": "product", "ean": "594906503482", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1999 }
+  ],
+  "meta": { "engine": "fixture", "parser": "ground-truth", "parserVersion": "1.0.0", "warnings": [] }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "Lidl receipt (phone screenshot): raw Tesseract output with real misreads, plus the clean text a Live Text / Lens copy would give. Dated after the case clock.",
+  "origin": "real",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "The printed date 29/12/2026 is after `now`, so the ground truth carries FUTURE_DATE.",
+    "Each item prints `n,000 BUC x price` on the line above `name total class`, so unitPriceBani is known for every line. Classes: A = 21%, B = 11%; only the VAT amounts are printed (no net or gross). The three CARD lines are the payments: paid = 61,67.",
+    "source.ocr-text.json is tesseract.js 7 (ron+eng, default page segmentation) on the original 672x1831 screenshot, confidence 89. Misreads: line 0 `Saci menajeri 68L` (printed 60L), line 4 unit price `x 9,18` (printed 9,10; the line total 9,10 is right), `TVA B 11,80%` (printed 11,00%), date row `0RA:17-12-38` (printed ORA:17-12-30). Line 24 is the card slip and has confidence 0.",
+    "source.pasted-text.json is the same text with those misreads corrected from the printed receipt.",
+    "expected.json is the truth. expected.ocr-text.json is what a perfect parser can extract from the OCR text with arithmetic repairs only: unit price 9,18 -> 9,10 (the total proves it) and VAT rate 11,80 -> 11, both flagged REPAIRED_DIGITS; the unrepairable misreads stay (name `68L`, seconds `38`).",
+    "The card slip rows and the promo/store footer are masked (letters x, digits 0) and must be ignored."
+  ]
+}

@@ -351,9 +351,12 @@ Conventions every case follows (checked by `tests/fixtures.test.ts`):
 - **Names** are exactly as printed (`rawName`), `pack` is what `parsePackSize(rawName)` returns, `ean` is kept as
   printed (13 digits carry a valid check digit; a truncated one stays truncated), `storeCategoryHint` is the section
   header printed above the line.
-- **Raw OCR keeps its mistakes.** `source.ocr-text.json` is real Tesseract output; `expected.json` is the truth, and
-  `case.json.notes` lists the known misreads. Score OCR parsers with the plan §10 metrics (total, % of lines, exact
-  price) unless the case has an `expected.ocr-text.json`.
+- **Raw OCR keeps its mistakes.** `source.ocr-text.json` is real Tesseract output (which run and which misreads:
+  `case.json.notes`); `source.pasted-text.json` is the same sanitized text with every misread corrected from the printed
+  receipt, as a Live Text / Lens copy would give it. `expected.json` is the truth: use it for the plan §10 accuracy
+  metrics (total, % of lines, exact price). Misreads no arithmetic can repair (a `68L` in a name, a wrong second) make an
+  exact match impossible, so a case may add `expected.ocr-text.json`: what a perfect parser extracts from that OCR text
+  with arithmetic repairs only (`REPAIRED_DIGITS`, `SUM_MISMATCH`). `sourceOf(fx, 'ocr-text').expected` returns it.
 - **Sanitized, not edited.** Personal rows of real receipts (loyalty card, card slip, buyer block, phone and bank lines)
   are masked in place: letters become `x`/`X`, digits `0`, so the document keeps its shape and a parser must skip
   those rows. Document numbers are fakes (`12345`, `1234567890123456`). Do not "repair" masked rows.
