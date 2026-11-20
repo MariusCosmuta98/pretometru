@@ -16,3 +16,7 @@ createRoot(rootElement).render(
     <PersistenceWatcher />
   </StrictMode>,
 );
+
+// Syncs with the user's GitHub repository by itself, when that is set up (src/sync/auto.ts).
+// Loaded after the first render, so that sync never slows the start of the app.
+void import('@/sync').then(({ startAutoSync }) => startAutoSync()).catch(() => undefined);
