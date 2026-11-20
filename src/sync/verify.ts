@@ -51,6 +51,13 @@ function resolveRepo(typed: string, login?: string): { owner: string; repo: stri
     : undefined;
 }
 
+/** Whether `input` can name a repository: `owner/name`, an address, or a bare name (the token's user owns it). */
+export function isPlausibleRepoInput(input: string): boolean {
+  const text = input.trim();
+  // Any valid owner will do to check the name part of a bare name.
+  return text.includes('/') ? parseRepoRef(text) !== undefined : isValidRepoRef('x', text);
+}
+
 /**
  * Everything the onboarding has to know before it saves a token: the token is valid, the
  * repository exists and is **private**, the token may read and write it (Contents: Read and

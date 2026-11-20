@@ -24,5 +24,5 @@ export { getSyncServices, resetSyncServices, setSyncServices } from './services'
 export type { SyncServices } from './services';
 export { latestChange, loadSyncView, readStatus } from './status';
 export type { SyncStatus, SyncView } from './status';
-export { verifyConnection } from './verify';
+export { isPlausibleRepoInput, verifyConnection } from './verify';
 export type { ConnectionCheck, RemoteSummary, VerifyInput, VerifyStep } from './verify';
