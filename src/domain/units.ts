@@ -67,10 +67,11 @@ const NUMBER = '\\d+(?:[.,]\\d+)?';
 // Meters only when glued to the number: `100M` is a length, `38 M` is a clothing size.
 const UNIT = '(?:kg|gr|g|ml|cl|lt|l|buc|role|rol|(?<=\\d)m)';
 const MULTIPLY = '[x*\\u00d7]';
-// A size token must start at a word edge, must not be the upper end of a range (`9-14KG`) and
-// must not run into more letters or digits.
+// A size token must start at a word edge or be glued to a word (`DEPELATE425ML`), must not be part
+// of a number, a product code (`A123G`) or the upper end of a range (`9-14KG`), and must not run
+// into more letters or digits.
 const PACK_PATTERN = new RegExp(
-  '(?<![\\p{L}\\d.,])(?<!\\d-)(?:' +
+  '(?<![\\d.,])(?<!(?<!\\p{L})\\p{L})(?<!\\d-)(?:' +
     // 4X125G, 6 x 0,5L: count first
     `(?<count>\\d+)\\s*${MULTIPLY}\\s*(?<countSize>${NUMBER})\\s*(?<countUnit>${UNIT})` +
     '|' +

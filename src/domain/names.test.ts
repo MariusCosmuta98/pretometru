@@ -14,6 +14,8 @@ describe('normalizeName', () => {
     ['LAPTE 1 LT', 'lapte 1l'],
     ['HARTIE IGIENICA 8 ROL', 'hartie igienica 8role'],
     ['SERVETELE 120 BUC', 'servetele 120buc'],
+    ['VDR SMANTANA400G', 'vdr smantana 400g'],
+    ['ROSII DEPELATE425ML', 'rosii depelate 425ml'],
   ])('turns %j into the alias key %j', (raw, expected) => {
     expect(normalizeName(raw)).toBe(expected);
   });

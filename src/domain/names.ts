@@ -8,17 +8,24 @@ const UNIT_SPELLINGS: Record<string, string> = { gr: 'g', lt: 'l', rol: 'role' }
  * idempotent: changing it invalidates every stored alias.
  */
 export function normalizeName(raw: string): string {
-  return raw
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/(?<=\d)[.,](?=\d)/g, DECIMAL_MARK)
-    .replace(new RegExp(`[^\\p{L}\\p{N}${DECIMAL_MARK}]+`, 'gu'), ' ')
-    .replaceAll(DECIMAL_MARK, '.')
-    .replace(
-      /(\d+(?:\.\d+)?) ?(kg|gr|g|ml|cl|lt|l|buc|role|rol|m)(?![\p{L}\d])/gu,
-      (_match, size: string, unit: string) => `${size}${UNIT_SPELLINGS[unit] ?? unit}`,
-    )
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (
+    raw
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .replace(/(?<=\d)[.,](?=\d)/g, DECIMAL_MARK)
+      .replace(new RegExp(`[^\\p{L}\\p{N}${DECIMAL_MARK}]+`, 'gu'), ' ')
+      .replaceAll(DECIMAL_MARK, '.')
+      // Kaufland glues sizes to the last word: `SMANTANA400G` -> `SMANTANA 400G`
+      .replace(
+        /(\p{L})(?=\d+(?:\.\d+)? ?(?:kg|gr|g|ml|cl|lt|l|buc|role|rol|m)(?![\p{L}\d]))/gu,
+        '$1 ',
+      )
+      .replace(
+        /(\d+(?:\.\d+)?) ?(kg|gr|g|ml|cl|lt|l|buc|role|rol|m)(?![\p{L}\d])/gu,
+        (_match, size: string, unit: string) => `${size}${UNIT_SPELLINGS[unit] ?? unit}`,
+      )
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }

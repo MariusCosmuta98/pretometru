@@ -19,8 +19,16 @@ describe('parsePackSize', () => {
     ['OUA M 10BUC', { qty: 10, unit: 'buc' }],
     ['FOLIE ALUMINIU 100M', { qty: 100, unit: 'm' }],
     ['SAMPON 400ML GRATIS 100ML', { qty: 400, unit: 'ml' }],
+    // Kaufland glues the size to the last word of the name
+    ['ROSII DEPELATE425ML', { qty: 425, unit: 'ml' }],
+    ['VDR SMANTANA400G', { qty: 400, unit: 'g' }],
+    ['FANTA ZERO330ML', { qty: 330, unit: 'ml' }],
   ])('reads the size of %j', (name, expected) => {
     expect(parsePackSize(name)).toEqual(expected);
+  });
+
+  it('reads a multipack glued to a word: OETKER ZAH.VAN8G*4', () => {
+    expect(parsePackSize('OETKER ZAH.VAN8G*4')).toEqual({ qty: 32, unit: 'g', unitsPerPack: 4 });
   });
 
   it.each([
