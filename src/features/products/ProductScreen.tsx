@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router';
 import type { ProductPriceSummary } from '@/analytics';
 import { formatLei } from '@/domain';
 import type { PretometruDB } from '@/storage';
+import { AddToList } from './AddToList';
 import { SaleTag, UnitPrice } from './badges';
 import { buildChartData } from './chart-data';
 import { formatDay, paidEach, unitLabel } from './format';
@@ -176,6 +177,7 @@ function ProductPage({ productId }: { productId: string }) {
           {unitLabel(summary.baseUnit)}
         </p>
         <Highlight summary={summary} />
+        <AddToList db={db} product={product} />
       </header>
 
       <PriceFilters db={db} windowDays={windowDays} excludeSales={excludeSales} />
