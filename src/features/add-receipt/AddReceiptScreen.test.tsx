@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,8 @@ import {
   textFile,
   type FakeEngines,
 } from '@/import/testing';
+import { readSharedFiles, stashSharedFiles } from '@/pwa/share-target';
+import { fakeCacheStorage } from '@/pwa/testing';
 import { ensureSeed, listActive, type PretometruDB } from '@/storage';
 import { createTestDb } from '@/storage/testing';
 
@@ -33,6 +36,7 @@ afterEach(() => {
   resetImportServices();
   clearReviewSessions();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function install(options: { engines?: FakeEngines; parse?: ReturnType<typeof fakeParser> } = {}) {
@@ -221,5 +225,78 @@ describe('add receipt', () => {
     await waitFor(() => {
       expect(screen.getByText(/Sursă: PDF „singur\.pdf”/)).toBeTruthy();
     });
+  });
+});
+
+describe('add receipt: files shared from another app (Web Share Target)', () => {
+  const scope = () => new URL(import.meta.env.BASE_URL, window.location.href).href;
+
+  /** What the service worker leaves behind for `#/adauga?shared=<id>`. */
+  async function share(id: string, files: File[]) {
+    const caches = fakeCacheStorage();
+    vi.stubGlobal('caches', caches);
+    await stashSharedFiles(files, {
+      caches,
+      scope: scope(),
+      now: () => Date.now(),
+      newId: () => id,
+    });
+    return caches;
+  }
+
+  function renderShared(id: string) {
+    const router = createMemoryRouter(buildRoutes(features), {
+      initialEntries: [`/adauga?shared=${id}`],
+    });
+    // StrictMode runs every effect twice: the batch must still be read, and imported, once.
+    render(
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>,
+    );
+    return router;
+  }
+
+  it('reads a shared receipt at once and opens its review', async () => {
+    const { engines } = install();
+    const caches = await share('k1-aaaa', [pdfFile('distribuit.pdf')]);
+    const router = renderShared('k1-aaaa');
+
+    await screen.findByRole('heading', { level: 2, name: 'Detalii bon' });
+    expect(router.state.location.pathname).toMatch(/^\/bonuri\/[0-9A-Z]{26}$/);
+    expect(await listActive(db.receipts)).toHaveLength(1);
+    expect(engines.calls.extractPdfText).toHaveLength(1);
+    await waitFor(async () => {
+      expect(await readSharedFiles('k1-aaaa', caches, scope())).toEqual([]);
+    });
+  });
+
+  it('lists the results of several shared files and leaves the batch id out of the address', async () => {
+    install();
+    await share('k2-bbbb', [pdfFile('a.pdf', 'first'), pdfFile('b.pdf', 'second')]);
+    const router = renderShared('k2-bbbb');
+
+    const results = await screen.findByRole('region', { name: 'Rezultat' });
+    expect(within(results).getByRole('link', { name: 'Verifică „a.pdf”' })).toBeTruthy();
+    expect(within(results).getByRole('link', { name: 'Verifică „b.pdf”' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/adauga');
+    expect(router.state.location.search).toBe('');
+  });
+
+  it('says so when the shared files are gone, and keeps the screen usable', async () => {
+    install();
+    vi.stubGlobal('caches', fakeCacheStorage());
+    const router = renderShared('k3-cccc');
+
+    expect(await screen.findByText(/Nu am primit niciun fișier prin „Distribuie”/)).toBeTruthy();
+    expect(router.state.location.search).toBe('');
+    expect(screen.getByLabelText('Alege fișiere')).toBeTruthy();
+    expect(await listActive(db.receipts)).toEqual([]);
+  });
+
+  it('does nothing without a batch id', async () => {
+    install();
+    await renderAddScreen();
+    expect(screen.queryByText(/Distribuie/)).toBeNull();
   });
 });

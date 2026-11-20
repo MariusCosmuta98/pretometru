@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { useSharedFiles } from '@/pwa';
 import {
   buttonPrimary,
   buttonSecondary,
@@ -80,6 +81,13 @@ export function Component() {
     void run([{ label: 'Text lipit', input: { kind: 'text', text } }]);
   }
 
+  // Receipts shared to the installed app ("Distribuie" on Android, see src/pwa/share-target.ts) are read at once.
+  const shared = useSharedFiles((files) => {
+    void run(
+      files.map((file) => ({ label: file.name || 'Fișier', input: { kind: 'file', file } })),
+    );
+  });
+
   const runningIndex = runner.jobs.findIndex((job) => job.status === 'running');
   const runningJob = runner.jobs[runningIndex];
   const finished = !runner.running && runner.jobs.length > 0;
@@ -91,6 +99,11 @@ export function Component() {
 
   return (
     <div className="space-y-4">
+      {shared.missing ? (
+        <p role="status" className={noticeClass.info}>
+          Nu am primit niciun fișier prin „Distribuie”. Alege-l mai jos.
+        </p>
+      ) : null}
       <section aria-labelledby="add-file-title" className={card}>
         <h2 id="add-file-title" className="font-semibold">
           Din fișier sau poză
