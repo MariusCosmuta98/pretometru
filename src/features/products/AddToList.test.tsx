@@ -93,6 +93,25 @@ describe('Product screen: Adaugă pe listă', () => {
     expect(await listActive(db.listItems)).toMatchObject([{ listId: old.id, productId: paper.id }]);
   });
 
+  it('falls back to the newest list when the one chosen earlier is gone', async () => {
+    const { db, paper } = await seedWorld();
+    const old = await createList(db, 'Veche');
+    const fresh = await createList(db, 'Nouă');
+    renderProduct(paper.id);
+    const first = await openPanel();
+    fireEvent.change(within(first.form).getByLabelText('Lista'), { target: { value: old.id } });
+    fireEvent.click(within(first.form).getByRole('button', { name: 'Anulează' }));
+
+    await archiveList(db, old.id); // from another tab, or by sync
+    fireEvent.click(first.trigger);
+    const form = await screen.findByRole('form', { name: 'Adaugă pe listă' });
+
+    expect(within(form).getByLabelText<HTMLSelectElement>('Lista').value).toBe(fresh.id);
+    fireEvent.click(within(form).getByRole('button', { name: 'Adaugă' }));
+    expect(await screen.findByText(/Adăugat pe lista „Nouă”\./)).toBeTruthy();
+    expect(await listActive(db.listItems)).toMatchObject([{ listId: fresh.id }]);
+  });
+
   it('starts a new list with the product when there is no list yet', async () => {
     const { db, paper } = await seedWorld();
     renderProduct(paper.id);

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { QTY_UNITS, type QtyUnit } from '@/domain';
 import { updateItem, type ItemPatch, type PlannedItem } from '@/lists';
 import type { PretometruDB } from '@/storage';
@@ -41,10 +41,6 @@ export function ItemEditor({
   const ids = { label: useId(), qty: useId(), unit: useId(), note: useId(), error: useId() };
   const labelField = useRef<HTMLInputElement>(null);
   const qtyField = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    (labelField.current ?? qtyField.current)?.focus();
-  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();

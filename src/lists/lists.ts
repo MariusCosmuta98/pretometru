@@ -83,13 +83,10 @@ export function deleteList(
   listId: string,
   context?: StorageContext,
 ): Promise<boolean> {
-  const { stamp, context: pinned } = pinClock(context);
+  const { context: pinned } = pinClock(context);
   return db.transaction('rw', [db.lists, db.listItems], async () => {
     if (!(await softDelete(db.lists, listId, pinned))) return false;
-    const items = await liveItems(db, listId);
-    await db.listItems.bulkPut(
-      items.map((item) => ({ ...item, updatedAt: stamp, deletedAt: stamp })),
-    );
+    for (const item of await liveItems(db, listId)) await softDelete(db.listItems, item.id, pinned);
     return true;
   });
 }

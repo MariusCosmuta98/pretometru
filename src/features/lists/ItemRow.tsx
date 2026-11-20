@@ -43,23 +43,34 @@ export function ItemRow({
   const detailId = `detail-${item.id}`;
   const editorId = `editor-${item.id}`;
 
+  const row = useRef<HTMLLIElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
+  const focusEditor = useRef(false);
   const returnFocus = useRef(false);
-  // Closing the editor from its own buttons puts focus back on "Editează"; opening another item's
-  // editor must not take it from there.
+  // Focus follows the user's own actions only: into the editor when "Editează" opens it, back on
+  // "Editează" when the editor's own buttons close it. An editor that merely appears again (the row
+  // moved to another store, the view changed) or another item's editor must not take focus.
   useEffect(() => {
-    if (editing || !returnFocus.current) return;
-    returnFocus.current = false;
-    toggle.current?.focus();
+    if (editing && focusEditor.current) {
+      focusEditor.current = false;
+      row.current?.querySelector<HTMLElement>('form input, form select')?.focus();
+    } else if (!editing && returnFocus.current) {
+      returnFocus.current = false;
+      toggle.current?.focus();
+    }
   }, [editing]);
 
+  const open = () => {
+    focusEditor.current = true;
+    onEdit(true);
+  };
   const close = () => {
     returnFocus.current = true;
     onEdit(false);
   };
 
   return (
-    <li className="py-1">
+    <li ref={row} className="py-1">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2">
@@ -76,9 +87,12 @@ export function ItemRow({
                 <span className="text-slate-600 dark:text-slate-400"> · {product.brand}</span>
               )}
               {quantity && (
-                <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-sm dark:bg-slate-800">
-                  {quantity}
-                </span>
+                <>
+                  {' '}
+                  <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-sm dark:bg-slate-800">
+                    {quantity}
+                  </span>
+                </>
               )}
             </span>
           </label>
@@ -104,7 +118,7 @@ export function ItemRow({
             aria-expanded={editing}
             aria-controls={editing ? editorId : undefined}
             aria-label={`Editează ${name}`}
-            onClick={() => (editing ? close() : onEdit(true))}
+            onClick={() => (editing ? close() : open())}
           >
             Editează
           </button>

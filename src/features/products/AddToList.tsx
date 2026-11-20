@@ -3,7 +3,8 @@ import { Link } from 'react-router';
 import type { List, Product } from '@/domain';
 import { addProductToList, createListWithProduct, listOpenLists, type AddStatus } from '@/lists';
 import type { PretometruDB } from '@/storage';
-import { button, field, muted, primaryButton } from './styles';
+import { buttonPrimary } from '@/ui/controls';
+import { button, field, muted } from './styles';
 
 const NEW_LIST = 'new';
 
@@ -61,7 +62,9 @@ export function AddToList({ db, product }: { db: PretometruDB; product: Product 
     if (open && lists) (listField.current ?? nameField.current)?.focus();
   }, [open, lists]);
 
-  const selected = choice ?? lists?.[0]?.id ?? NEW_LIST;
+  // What the select shows: the user's choice while that list still exists, else the newest list.
+  const kept = choice === NEW_LIST || lists?.some((list) => list.id === choice);
+  const selected = kept && choice ? choice : (lists?.[0]?.id ?? NEW_LIST);
   const creating = selected === NEW_LIST;
 
   function close() {
@@ -84,7 +87,10 @@ export function AddToList({ db, product }: { db: PretometruDB; product: Product 
         setOutcome({ listId: list.id, listName: list.name, status });
       } else {
         const list = lists?.find((entry) => entry.id === selected);
-        if (!list) return;
+        if (!list) {
+          setProblem('Lista nu mai există.');
+          return;
+        }
         const { status } = await addProductToList(db, list.id, product.id);
         setOutcome({ listId: list.id, listName: list.name, status });
       }
@@ -107,6 +113,7 @@ export function AddToList({ db, product }: { db: PretometruDB; product: Product 
           if (open) close();
           else {
             setLists(undefined);
+            setChoice(undefined);
             setOutcome(undefined);
             setOpen(true);
           }
@@ -174,7 +181,7 @@ export function AddToList({ db, product }: { db: PretometruDB; product: Product 
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <button type="submit" className={primaryButton}>
+            <button type="submit" className={buttonPrimary}>
               Adaugă
             </button>
             <button type="button" className={button} onClick={close}>

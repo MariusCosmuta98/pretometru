@@ -79,20 +79,23 @@ describe('List screen: where each item is cheapest', () => {
 
     const metro = await store('METRO');
     expect(within(metro).getByRole('heading', { level: 3 }).textContent).toBe('METRO');
-    expect(names(metro)).toEqual(['Hârtie igienică2 buc', 'Șervețele umede 120 buc']);
+    expect(names(metro)).toEqual(['Hârtie igienică 2 buc', 'Șervețele umede 120 buc']);
     expect(metro.textContent).toContain('2 articole · ≈ 24,82 lei');
     const paper = rowOf('Hârtie igienică');
     expect(paper.textContent).toContain(
       'Cel mai ieftin la METRO: 1,30 lei/rolă (10,42 lei / 8 role) · 12.08.2026',
     );
     expect(paper.textContent).toContain('reducere'); // METRO's price was a sale price
+    // the name, the quantity and the sale tag are separate words for a screen reader
+    expect(screen.getByRole('checkbox', { name: 'Hârtie igienică 2 buc' })).toBeTruthy();
+    expect(paper.textContent).toContain('12.08.2026 reducere');
     expect(paper.textContent).toContain('≈ 20,84 lei'); // 2 packs of 10,42
     expect(rowOf('Șervețele umede 120 buc').textContent).toContain(
       '0,0332 lei/buc (3,98 lei / 120 buc) · 12.08.2026',
     );
 
     const kaufland = await store('Kaufland');
-    expect(names(kaufland)).toEqual(['Pulpe de pui0,5 kg']);
+    expect(names(kaufland)).toEqual(['Pulpe de pui 0,5 kg']);
     expect(kaufland.textContent).toContain('1 articol · ≈ 12,49 lei');
     expect(rowOf('Pulpe de pui').textContent).toContain(
       'Doar la Kaufland: 24,99 lei/kg · 07.11.2026',
@@ -124,9 +127,9 @@ describe('List screen: where each item is cheapest', () => {
     renderList(listId);
     const kaufland = await store('Kaufland');
     expect(names(kaufland)).toEqual([
-      'Hârtie igienică2 buc',
+      'Hârtie igienică 2 buc',
       'Șervețele umede 120 buc',
-      'Pulpe de pui0,5 kg',
+      'Pulpe de pui 0,5 kg',
     ]);
     expect(screen.queryByRole('region', { name: 'METRO' })).toBeNull();
     expect(rowOf('Hârtie igienică').textContent).toContain(
@@ -137,7 +140,7 @@ describe('List screen: where each item is cheapest', () => {
     fireEvent.change(screen.getByLabelText('Perioadă de comparație'), { target: { value: '180' } });
 
     const metro = await store('METRO');
-    expect(names(metro)).toEqual(['Hârtie igienică2 buc', 'Șervețele umede 120 buc']);
+    expect(names(metro)).toEqual(['Hârtie igienică 2 buc', 'Șervețele umede 120 buc']);
     expect(screen.getByText(/^Prețuri din ultimele 180 de zile, cu reduceri/)).toBeTruthy();
   });
 
@@ -152,9 +155,9 @@ describe('List screen: where each item is cheapest', () => {
     await waitFor(() => expect(screen.queryByRole('region', { name: 'METRO' })).toBeNull());
     const kaufland = await store('Kaufland');
     expect(names(kaufland)).toEqual([
-      'Hârtie igienică2 buc',
+      'Hârtie igienică 2 buc',
       'Șervețele umede 120 buc',
-      'Pulpe de pui0,5 kg',
+      'Pulpe de pui 0,5 kg',
     ]);
     expect(screen.getByText(/, fără reduceri$/)).toBeTruthy();
   });
@@ -168,7 +171,7 @@ describe('List screen: where each item is cheapest', () => {
       'Niciun preț de comparat în ultimele 10 zile. Ultima achiziție: Kaufland, 1,45 lei/rolă',
     );
     // chicken was bought at one store only, so it stays there whatever the window
-    expect(names(await store('Kaufland'))).toEqual(['Pulpe de pui0,5 kg']);
+    expect(names(await store('Kaufland'))).toEqual(['Pulpe de pui 0,5 kg']);
   });
 
   it('switches to a plain list in list order and back to the stores', async () => {
@@ -180,9 +183,9 @@ describe('List screen: where each item is cheapest', () => {
 
     const plain = screen.getByRole('region', { name: 'Articolele listei' });
     expect(names(plain)).toEqual([
-      'Hârtie igienică2 buc',
+      'Hârtie igienică 2 buc',
       'Șervețele umede 120 buc',
-      'Pulpe de pui0,5 kg',
+      'Pulpe de pui 0,5 kg',
       'Cafea măcinată',
       'Pâine',
     ]);
@@ -232,7 +235,7 @@ describe('List screen: checking items', () => {
     await waitFor(() =>
       expect(names(screen.getByRole('region', { name: 'METRO' }))).toEqual([
         'Șervețele umede 120 buc',
-        'Hârtie igienică2 buc',
+        'Hârtie igienică 2 buc',
       ]),
     );
     expect(document.body.textContent).toContain('1 din 5 articole bifate');
@@ -265,6 +268,9 @@ describe('List screen: checking items', () => {
     expect(document.activeElement).toBe(within(group).getByRole('button', { name: 'Anulează' }));
     fireEvent.click(within(group).getByRole('button', { name: 'Anulează' }));
     expect(screen.queryByRole('group', { name: /Ștergi/ })).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Șterge bifatele (2)' }),
+    );
     expect(await db.listItems.count()).toBe(5);
 
     fireEvent.click(screen.getByRole('button', { name: 'Debifează tot' }));
@@ -439,13 +445,28 @@ describe('List screen: editing an item', () => {
     });
     fireEvent.change(within(form).getByLabelText('Cantitate'), { target: { value: '2' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Salvează' }));
-    expect(await screen.findByRole('checkbox', { name: /^Pâine neagră2/ })).toBeTruthy();
+    expect(await screen.findByRole('checkbox', { name: /^Pâine neagră 2/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Editează Pâine neagră' }));
     fireEvent.change(screen.getByLabelText('Cantitate'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvează' }));
     await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
     expect((await db.listItems.get(items.bread.id))?.qty).toBeUndefined();
+  });
+
+  it('keeps the focus where the user is when an open editor appears again, e.g. after switching the view', async () => {
+    await setSetting(db, 'priceWindowDays', 120);
+    renderList(listId);
+    await store('METRO');
+    fireEvent.click(screen.getByRole('button', { name: 'Editează Hârtie igienică' }));
+    const plainView = screen.getByLabelText('Listă simplă');
+    plainView.focus();
+
+    fireEvent.click(plainView);
+
+    const plain = await screen.findByRole('region', { name: 'Articolele listei' });
+    expect(within(plain).getByRole('form', { name: 'Editează Hârtie igienică' })).toBeTruthy();
+    expect(document.activeElement).toBe(plainView);
   });
 
   it('does not offer to rename a product item: its name is the product', async () => {
@@ -482,9 +503,9 @@ describe('List screen: editing an item', () => {
     const down = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Mută mai jos' });
     const kaufland = () => names(screen.getByRole('region', { name: 'Kaufland' }));
     expect(kaufland()).toEqual([
-      'Hârtie igienică2 buc',
+      'Hârtie igienică 2 buc',
       'Șervețele umede 120 buc',
-      'Pulpe de pui0,5 kg',
+      'Pulpe de pui 0,5 kg',
     ]);
     expect(up().disabled).toBe(false);
     expect(down().disabled).toBe(false);
@@ -493,8 +514,8 @@ describe('List screen: editing an item', () => {
     await waitFor(() =>
       expect(kaufland()).toEqual([
         'Șervețele umede 120 buc',
-        'Hârtie igienică2 buc',
-        'Pulpe de pui0,5 kg',
+        'Hârtie igienică 2 buc',
+        'Pulpe de pui 0,5 kg',
       ]),
     );
     expect(up().disabled).toBe(true); // at the top of its store now
@@ -503,9 +524,9 @@ describe('List screen: editing an item', () => {
     fireEvent.click(down());
     await waitFor(() =>
       expect(kaufland()).toEqual([
-        'Hârtie igienică2 buc',
+        'Hârtie igienică 2 buc',
         'Șervețele umede 120 buc',
-        'Pulpe de pui0,5 kg',
+        'Pulpe de pui 0,5 kg',
       ]),
     );
     await waitFor(() => expect(document.activeElement).toBe(down()));
@@ -513,8 +534,8 @@ describe('List screen: editing an item', () => {
     fireEvent.click(down());
     await waitFor(() =>
       expect(kaufland()).toEqual([
-        'Hârtie igienică2 buc',
-        'Pulpe de pui0,5 kg',
+        'Hârtie igienică 2 buc',
+        'Pulpe de pui 0,5 kg',
         'Șervețele umede 120 buc',
       ]),
     );
@@ -585,6 +606,15 @@ describe('List screen: the list itself', () => {
 
     await waitFor(() => expect(screen.queryByText('Lista e arhivată.')).toBeNull());
     expect((await db.lists.get(listId))?.archivedAt).toBeUndefined();
+  });
+
+  it('puts focus on the add field after "Restaurează", which removes the banner that had it', async () => {
+    await archiveList(db, listId);
+    renderList(listId);
+    fireEvent.click(await screen.findByRole('button', { name: 'Restaurează' }));
+
+    await waitFor(() => expect(screen.queryByText('Lista e arhivată.')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByLabelText('Adaugă un articol'));
   });
 
   it('turns into "not found" when the list is deleted elsewhere', async () => {

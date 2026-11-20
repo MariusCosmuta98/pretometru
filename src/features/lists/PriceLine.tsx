@@ -20,7 +20,12 @@ function Price({ price }: { price: PriceObservation }) {
         {formatUnitPrice(price.pricePerBaseMilliBani, price.baseUnit)}
       </span>
       {pack && <span> ({pack})</span>} · {formatDay(price.date)}
-      {price.onSale && <SaleTag />}
+      {price.onSale && (
+        <>
+          {' '}
+          <SaleTag />
+        </>
+      )}
     </>
   );
 }

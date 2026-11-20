@@ -84,6 +84,7 @@ function LoadedList({ db, view }: { db: PretometruDB; view: ListView }) {
   const [problem, setProblem] = useState<string>();
   const [confirmClear, setConfirmClear] = useState(false);
   const addInput = useRef<HTMLInputElement>(null);
+  const clearButton = useRef<HTMLButtonElement>(null);
   const pendingFocus = useRef<{ id: string; direction: Direction }>(undefined);
 
   // A moved item can lose focus when the list re-renders in its new order: put it back on the
@@ -162,7 +163,11 @@ function LoadedList({ db, view }: { db: PretometruDB; view: ListView }) {
           <button
             type="button"
             className={buttonSecondary}
-            onClick={() => void run(restoreList(db, list.id))}
+            onClick={() =>
+              void run(restoreList(db, list.id)).then((done) => {
+                if (done) addInput.current?.focus();
+              })
+            }
           >
             Restaurează
           </button>
@@ -215,6 +220,7 @@ function LoadedList({ db, view }: { db: PretometruDB; view: ListView }) {
               </button>
               <button
                 type="button"
+                ref={clearButton}
                 className={buttonSecondary}
                 onClick={() => setConfirmClear(true)}
               >
@@ -226,7 +232,10 @@ function LoadedList({ db, view }: { db: PretometruDB; view: ListView }) {
             <ConfirmBar
               message={`Ștergi ${checkedWord} din listă?`}
               confirmLabel="Șterge bifatele"
-              onCancel={() => setConfirmClear(false)}
+              onCancel={() => {
+                setConfirmClear(false);
+                clearButton.current?.focus();
+              }}
               onConfirm={() => {
                 setConfirmClear(false);
                 void run(removeCheckedItems(db, list.id)).then(() => addInput.current?.focus());

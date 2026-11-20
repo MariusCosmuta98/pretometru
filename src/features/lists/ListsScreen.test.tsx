@@ -75,8 +75,8 @@ describe('Lists screen', () => {
 
     const items = await screen.findAllByRole('link');
     expect(items.map((link) => link.textContent)).toEqual([
-      'NouăListă goală',
-      'Veche1 din 3 articole bifate',
+      'Nouă Listă goală',
+      'Veche 1 din 3 articole bifate',
     ]);
     expect(items[0]?.getAttribute('href')).toBe(`/liste/${fresh.id}`);
     expect(items[1]?.getAttribute('href')).toBe(`/liste/${old.id}`);

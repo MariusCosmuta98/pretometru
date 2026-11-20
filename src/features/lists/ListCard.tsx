@@ -140,7 +140,7 @@ export function ListCard({
           to={`/liste/${list.id}`}
           className="block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
         >
-          <span className="block break-words font-medium">{list.name}</span>
+          <span className="block break-words font-medium">{list.name}</span>{' '}
           <span className="block text-sm text-slate-600 dark:text-slate-400">{progress}</span>
         </Link>
       )}
