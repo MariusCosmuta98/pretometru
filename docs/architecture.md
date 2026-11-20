@@ -857,7 +857,13 @@ photo of the Lidl text; `seed.ts`: price history written into IndexedDB), so not
 
 ### Limits
 
-Not verifiable here: the Android share sheet, an installed PWA on iOS (Safari's storage rules), Chrome's real answer to
-`persist()` for an installed app, and the `.mjs` MIME type that GitHub Pages sends for the pdf.js worker (loaded the same way
-before; the worker stores the response as served). An update that changes an engine leaves the new engine unstored until it
-is next used online or fetched from Settings: the old caches are deleted when the new worker activates.
+Checked once on the deployed site (headless Chrome, GitHub Pages): the worker installs and controls the page, the manifest
+has no errors, the pdf.js worker is served as `text/javascript`, and a PDF imports offline after its first use with every
+main route rendering. Not verifiable here: the Android share sheet, an installed PWA on iOS (Safari's storage rules) and
+Chrome's real answer to `persist()` for an installed app.
+
+The share-target action answers any POST below the scope, as the manifest requires, so a page on another site can submit a
+form to it and leave drafts in the add-receipt screen (nothing is confirmed, synced or sent anywhere; a share can be at most
+ten files of any size, which the importer then refuses above 40 MB). If that ever matters, show the shared files and wait for
+a tap instead of starting the import (`useSharedFiles` in `src/pwa`). An update that changes an engine leaves the new engine
+unstored until it is next used online or fetched from Settings: the old caches are deleted when the new worker activates.
