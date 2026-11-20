@@ -37,7 +37,7 @@ export function fakePhoto(name = 'bon.jpg'): File {
  * Points the module at a test database and an in-memory Gemini (the real photo preparation is
  * replaced too: jsdom has no canvas). Undo with `resetAiServices()`.
  */
-export function useMockGemini(db: PretometruDB, mock: MockGemini, online = true): void {
+export function wireMockGemini(db: PretometruDB, mock: MockGemini, online = true): void {
   setAiServices({
     getDb: () => Promise.resolve(db),
     fetch: mock.fetch,

@@ -1,7 +1,7 @@
 import { newId } from '@/domain';
 import { getDb, type PretometruDB } from '@/storage';
-import { defaultCatalog, defaultEngines, defaultParser } from './engines';
-import type { CatalogPort, EnginePort, ParserPort } from './ports';
+import { defaultAi, defaultCatalog, defaultEngines, defaultParser } from './engines';
+import type { AiPort, CatalogPort, EnginePort, ParserPort } from './ports';
 
 /** Everything the import pipeline and the screens depend on, injectable for tests. */
 export interface ImportServices {
@@ -9,6 +9,8 @@ export interface ImportServices {
   parser: ParserPort;
   engines: EnginePort;
   catalog: CatalogPort;
+  /** The optional Gemini reading, used only by the review's "Citește cu AI". */
+  ai: AiPort;
   now: () => Date;
   newId: () => string;
 }
@@ -18,6 +20,7 @@ const defaults: ImportServices = {
   parser: defaultParser,
   engines: defaultEngines,
   catalog: defaultCatalog,
+  ai: defaultAi,
   now: () => new Date(),
   newId,
 };

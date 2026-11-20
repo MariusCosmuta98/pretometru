@@ -14,6 +14,8 @@ import { validateReceipt } from '@/parsers';
 import { makeParsedLine, makeParsedReceipt } from '@/parsers/testing';
 import { createRecord, type PretometruDB } from '@/storage';
 import type {
+  AiPort,
+  AiReadPhase,
   BoundingBox,
   CatalogPort,
   EnginePort,
@@ -264,6 +266,42 @@ export function fakeCatalog(): FakeCatalog {
   };
 }
 
+export interface FakeAi extends AiPort {
+  /** What `isEnabled` answers: the feature is off unless a test switches it on. */
+  enabled: boolean;
+  /** The photos that were sent, in order. */
+  sent: Blob[];
+  /**
+   * What a reading answers: a receipt, an error to reject with, or a function (to wait for the
+   * abort signal, say). The phases are reported first, as the real one does.
+   */
+  answer:
+    | ParsedReceipt
+    | Error
+    | ((image: Blob, options: { signal?: AbortSignal }) => ParsedReceipt | Promise<ParsedReceipt>);
+}
+
+/** The Gemini port, in memory: off, and nothing is ever sent anywhere. */
+export function fakeAi(init: Partial<Pick<FakeAi, 'enabled' | 'answer'>> = {}): FakeAi {
+  const fake: FakeAi = {
+    enabled: init.enabled ?? false,
+    sent: [],
+    answer: init.answer ?? new Error('No answer was prepared for the Gemini reading'),
+    isEnabled: () => Promise.resolve(fake.enabled),
+    readReceipt: async (image, options = {}) => {
+      fake.sent.push(image);
+      const phases: AiReadPhase[] = ['preparing', 'sending'];
+      for (const phase of phases) options.onPhase?.(phase);
+      const { answer } = fake;
+      if (answer instanceof Error) throw answer;
+      return typeof answer === 'function'
+        ? answer(image, options.signal ? { signal: options.signal } : {})
+        : answer;
+    },
+  };
+  return fake;
+}
+
 /** Deterministic services over a test database; pass what a test wants to observe or replace. */
 export function testServices(
   db: PretometruDB,
@@ -274,6 +312,7 @@ export function testServices(
     parser: fakeParser(makeParsedReceipt()),
     engines: fakeEngines(),
     catalog: fakeCatalog(),
+    ai: fakeAi(),
     now: testNow,
     newId: testIds,
     ...overrides,

@@ -33,6 +33,11 @@ export interface ReviewReady {
   categories: Category[];
   /** The photo, still in memory when the receipt was imported in this session. */
   original?: Blob;
+  /**
+   * "Citește cu AI" is offered: the receipt is a draft read from a photo and the user switched the
+   * optional Gemini reading on. Off by default.
+   */
+  aiEnabled: boolean;
   /** The clock of the review (ms), fixed when it opens. */
   now: number;
 }
@@ -95,6 +100,11 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<ReviewData
         : {};
 
     const original = receiptId === undefined ? undefined : getReviewSession(receiptId)?.original;
+    // A read of this device's settings, only for a draft that came from a photo.
+    const aiEnabled =
+      draft.status === 'draft' && draft.source.kind === 'image'
+        ? await services.ai.isEnabled(db).catch(() => false)
+        : false;
     return {
       status: 'ready',
       isNew,
@@ -105,6 +115,7 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<ReviewData
       products: [...products.values()],
       categories,
       ...(original ? { original } : {}),
+      aiEnabled,
       now: now.getTime(),
     };
   } catch (error) {

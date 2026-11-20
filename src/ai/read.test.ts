@@ -13,7 +13,7 @@ import {
   fakePhoto,
   fakePreparedImage,
   TEST_NOW,
-  useMockGemini,
+  wireMockGemini,
 } from './testing';
 import type { AiPhase } from './types';
 
@@ -22,7 +22,7 @@ let mock: MockGemini;
 beforeEach(async () => {
   db = await createTestDb();
   mock = new MockGemini({ keys: [FAKE_KEY] }).addModel('gemini-3.6-flash');
-  useMockGemini(db, mock);
+  wireMockGemini(db, mock);
 });
 afterEach(async () => {
   mock.dispose();
@@ -50,7 +50,7 @@ async function failure(run: () => Promise<unknown>): Promise<AiError> {
   throw new Error('It did not fail');
 }
 
-/** The services of `useMockGemini`, with a spy on the photo preparation. */
+/** The services of `wireMockGemini`, with a spy on the photo preparation. */
 function spyOnPreparation(options: { fails?: boolean; online?: boolean } = {}): { calls: number } {
   const spy = { calls: 0 };
   setAiServices({

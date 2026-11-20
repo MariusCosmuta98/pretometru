@@ -61,3 +61,24 @@ export interface CatalogPort {
     context?: StorageContext,
   ): Promise<void>;
 }
+
+/** What a Gemini reading reports while it runs: the photo is prepared, then sent. */
+export type AiReadPhase = 'preparing' | 'sending';
+
+/**
+ * `@/ai`: the optional Gemini reading of a photo. Off by default, and nothing of it is loaded
+ * until the user presses "Citește cu AI" and confirms what is sent.
+ */
+export interface AiPort {
+  /** True when the user switched the feature on and saved a key. Reads this device's settings, no network. */
+  isEnabled(db: PretometruDB): Promise<boolean>;
+  /**
+   * Reads a photo with Gemini: the one call that sends an image to Google. Call it only after the
+   * user confirmed. The receipt it answers with is validated like any engine's (`meta.engine` is
+   * `gemini`). Rejects with an `AiError` (`describeAiError` of `@/ai` has its Romanian text).
+   */
+  readReceipt(
+    image: Blob,
+    options?: { signal?: AbortSignal; onPhase?: (phase: AiReadPhase) => void },
+  ): Promise<ParsedReceipt>;
+}

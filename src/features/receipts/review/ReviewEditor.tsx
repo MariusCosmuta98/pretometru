@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Link, useBlocker, useLocation, useNavigate } from 'react-router';
 import { formatLei, type Product, type Receipt } from '@/domain';
 import {
+  adoptReading,
   analyze,
   confirmBlockers,
   confirmDraft,
@@ -16,12 +17,14 @@ import {
   reviewReducer,
   saveDraft,
   withWarnings,
+  type AiReadPhase,
   type Blocker,
   type NewProductInput,
 } from '@/import';
 import { buttonDanger, buttonPrimary, buttonSecondary, card, noticeClass } from '@/ui/controls';
 import { SOURCE_LABELS, STATUS_LABELS } from '../labels';
 import type { ReviewReady } from '../reviewLoader';
+import { AiReading } from './AiReading';
 import { Dialog } from './Dialog';
 import { LineEditor } from './LineEditor';
 import { ProductPicker } from './ProductPicker';
@@ -60,6 +63,9 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
   const [products, setProducts] = useState(
     () => new Map<string, Product>(data.products.map((product) => [product.id, product])),
   );
+  // What the catalog proposed per line id: a reading by Gemini brings its own lines, and the ones
+  // it replaced stay in case the user goes back to them.
+  const [suggestions, setSuggestions] = useState(data.suggestions);
   const [busy, setBusy] = useState<Busy>();
   const [message, setMessage] = useState<Message | undefined>(() => {
     const notice = (location.state as { notice?: string } | null)?.notice;
@@ -146,6 +152,11 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
   useEffect(() => {
     dirtyRef.current = dirty;
   }, [dirty]);
+  // The receipt as it is now, for a reading that finishes later (Gemini takes a while).
+  const formRef = useRef(form);
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
   const blocker = useBlocker(() => dirtyRef.current);
   useEffect(() => {
     if (!dirty) return;
@@ -193,6 +204,26 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
       patch: { productId: product.id, categoryId: product.categoryId },
     });
     setPickerLine(undefined);
+  }
+
+  /**
+   * "Citește cu AI", after the confirmation: sends the photo, then puts what Gemini read in the
+   * place of the reading on screen (the one it replaces is kept, `swap-reading` brings it back).
+   * Nothing is saved. A failure leaves everything as it was and is reported by the caller.
+   */
+  async function readWithAi(
+    photo: Blob,
+    run: { signal: AbortSignal; onPhase: (phase: AiReadPhase) => void },
+  ) {
+    const parsed = await services.ai.readReceipt(photo, run);
+    const adopted = await adoptReading(services, formRef.current, parsed);
+    setProducts((previous) => {
+      const next = new Map(previous);
+      for (const product of adopted.products) next.set(product.id, product);
+      return next;
+    });
+    setSuggestions((previous) => ({ ...previous, ...adopted.suggestions }));
+    dispatch({ type: 'replace-reading', form: adopted.form });
   }
 
   function refuse(found: readonly Blocker[]) {
@@ -293,7 +324,7 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
 
   const sumsMatch = analysis.differenceBani === 0;
   const pickerLineForm = form.lines.find((line) => line.id === pickerLine);
-  const pickerSuggestion = pickerLine ? data.suggestions[pickerLine] : undefined;
+  const pickerSuggestion = pickerLine ? suggestions[pickerLine] : undefined;
   const source = form.source;
 
   return (
@@ -312,8 +343,21 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
           {source.kind === 'manual'
             ? 'Bon introdus manual'
             : `Sursă: ${SOURCE_LABELS[source.kind]}${source.fileName ? ` „${source.fileName}”` : ''}`}
+          {form.extraction.engine === 'gemini' ? ' · citit cu Gemini' : ''}
         </span>
       </section>
+
+      <AiReading
+        available={data.aiEnabled && form.status === 'draft' && source.kind === 'image'}
+        original={data.original}
+        shown={{ engine: form.extraction.engine, parser: form.extraction.parser }}
+        hasAlternate={state.alternate !== undefined}
+        disabled={busy !== undefined}
+        onRead={readWithAi}
+        onSwap={() => {
+          dispatch({ type: 'swap-reading' });
+        }}
+      />
 
       {message ? (
         <p role="status" className={noticeClass[message.tone === 'error' ? 'error' : message.tone]}>
@@ -414,7 +458,7 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
                   warnings={analysis.warnings.filter((warning) => warning.lineIdx === line.idx)}
                   product={product}
                   categoryName={line.categoryId ? categoryNames.get(line.categoryId) : undefined}
-                  suggestion={data.suggestions[line.id]}
+                  suggestion={suggestions[line.id]}
                   original={data.original}
                   onChange={(patch) => {
                     dispatch({ type: 'edit-line', id: line.id, patch });

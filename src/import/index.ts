@@ -1,5 +1,6 @@
 // Public surface of the import logic (React-free): picked files and pasted text -> engines ->
 // parser -> draft receipt -> storage, plus the review working copy. Import from '@/import'.
+export * from './ai-reading';
 export * from './amounts';
 export * from './detect';
 export * from './draft';
