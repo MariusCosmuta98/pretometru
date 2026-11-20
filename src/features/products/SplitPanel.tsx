@@ -46,7 +46,8 @@ export function SplitPanel({
     try {
       const result = await splitProduct(db, product.id, { lineIds: [...selected], target });
       await navigate(`/produse/${result.product.id}`);
-    } catch {
+    } catch (error) {
+      console.error('Splitting a product failed', error);
       setFailed(true);
       setBusy(false);
     }

@@ -28,7 +28,8 @@ export function MergePanel({
     try {
       await mergeProducts(db, target.id, [product.id]);
       await navigate(`/produse/${target.id}`);
-    } catch {
+    } catch (error) {
+      console.error('Merging products failed', error);
       setFailed(true);
       setBusy(false);
     }
