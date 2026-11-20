@@ -11,6 +11,7 @@ import {
   fakeCatalog,
   fakeEngines,
   fakeParser,
+  OCR_SOURCE,
   pdfFile,
   pngFile,
   sampleReceipt,
@@ -203,6 +204,38 @@ describe('add receipt', () => {
     expect(await screen.findByText('Citirea a fost anulată.')).toBeTruthy();
     expect(screen.queryByRole('status', { name: 'Se citește bonul…' })).toBeNull();
     expect(screen.getByLabelText<HTMLInputElement>('Alege fișiere').disabled).toBe(false);
+    expect(await listActive(db.receipts)).toEqual([]);
+  });
+
+  it('says so while a photo is read a second time, and cancels that too', async () => {
+    let pass = 0;
+    const engines = fakeEngines(
+      {},
+      {
+        recognizeImage: (_image, opts) => {
+          // The first reading does not add up (see the total below), so a second one follows.
+          if (pass++ === 0) return Promise.resolve(OCR_SOURCE);
+          return new Promise((_resolve, reject) => {
+            opts?.onProgress?.(0.3);
+            opts?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('aborted', 'AbortError'));
+            });
+          });
+        },
+      },
+    );
+    install({ engines, parse: fakeParser(sampleReceipt({ totals: { grandTotalBani: 4000 } })) });
+    await renderAddScreen();
+
+    pick('Alege fișiere', [pngFile('lidl.png')]);
+
+    const status = await screen.findByRole('status', { name: 'Se citește bonul…' });
+    expect(
+      await within(status).findByText(/Se verifică încă o dată citirea pozei… 30%/),
+    ).toBeTruthy();
+    fireEvent.click(within(status).getByRole('button', { name: 'Anulează' }));
+
+    expect(await screen.findByText('Citirea a fost anulată.')).toBeTruthy();
     expect(await listActive(db.receipts)).toEqual([]);
   });
 

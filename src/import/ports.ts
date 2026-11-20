@@ -29,6 +29,8 @@ export interface RecognizeOptions {
   signal?: AbortSignal;
   /** 0..1 */
   onProgress?: (fraction: number) => void;
+  /** Overrides of the image preprocessing; the second OCR pass reads at another `scale`. */
+  preprocessing?: { scale?: number };
 }
 
 /** Text extraction: `@/import/pdf` (pdf.js) and `@/ocr` (Tesseract.js). */

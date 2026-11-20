@@ -130,11 +130,16 @@ export interface FakeEngines extends EnginePort {
   };
 }
 
+/**
+ * `sources.image` may list one source per OCR pass (the last one repeats): the first answers the
+ * normal pass, the second the retry at another scale.
+ */
 export function fakeEngines(
-  sources: { pdf?: PdfTextSource; image?: OcrTextSource } = {},
+  sources: { pdf?: PdfTextSource; image?: OcrTextSource | OcrTextSource[] } = {},
   behaviour: Partial<EnginePort> = {},
 ): FakeEngines {
   const calls: FakeEngines['calls'] = { extractPdfText: [], recognizeImage: [], cropRegion: [] };
+  const passes = Array.isArray(sources.image) ? sources.image : [sources.image ?? OCR_SOURCE];
   return {
     calls,
     extractPdfText:
@@ -146,10 +151,11 @@ export function fakeEngines(
     recognizeImage:
       behaviour.recognizeImage ??
       ((image, opts) => {
+        const pass = calls.recognizeImage.length;
         calls.recognizeImage.push({ image, opts });
         opts?.onProgress?.(0.5);
         opts?.onProgress?.(1);
-        return Promise.resolve(sources.image ?? OCR_SOURCE);
+        return Promise.resolve(passes[Math.min(pass, passes.length - 1)] ?? OCR_SOURCE);
       }),
     cropRegion:
       behaviour.cropRegion ??

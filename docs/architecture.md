@@ -672,7 +672,7 @@ How it works:
   defaults are a compromise, and the cheap fix is on the caller's side: when `parseReceipt` still reports
   `SUM_MISMATCH`, `MISSING_TOTAL`, `MISSING_DATE` or `LINE_ARITHMETIC` on an `ocr-text` receipt, run `recognizeImage`
   again with `{ preprocessing: { scale: 3 } }` and keep the receipt with fewer warnings (the OCR module cannot do it
-  itself: it knows nothing of the parsers). The import orchestrator (§12) does not retry yet.
+  itself: it knows nothing of the parsers). The import orchestrator does it (§12, "Second OCR pass").
 
 ## 12. Import and review (`src/import`, `src/features/add-receipt`, `src/features/receipts`)
 
@@ -699,16 +699,30 @@ undo it with `resetImportServices()`. A new engine (the optional Gemini one) is 
 | Step | What happens |
 | --- | --- |
 | detect | the file signature decides (PDF header within 1 KB, JPEG/PNG/GIF/BMP/WebP/HEIC), then the declared type and the extension; text files and pasted text need no engine |
-| extract | `extractPdfText(ArrayBuffer)` / `recognizeImage(file, { signal, onProgress })` / `{ kind: 'pasted-text', text }`; no text at all is `NO_TEXT` |
+| extract | `extractPdfText(ArrayBuffer)` / `recognizeImage(file, { signal, onProgress, preprocessing? })` / `{ kind: 'pasted-text', text }`; no text at all is `NO_TEXT` |
 | parse | `parseReceipt(source, { now: services.now() })`; no line recognised is `NOTHING_RECOGNIZED` |
+| second pass | a photo whose parse still has `SUM_MISMATCH`, `MISSING_TOTAL`, `MISSING_DATE` or `LINE_ARITHMETIC` is read once more (below) |
 | check | SHA-256 of the input (WebCrypto) and `findDuplicateReceipts` (same file, or same store + day + total) add a Romanian `DUPLICATE` warning |
 | save (`importToDraft`) | find-or-create the store (chain + branch), `saveReceipt` as `draft`; `importReceipt` alone persists nothing |
 
-Progress is reported per phase (`reading`, `extracting` with an OCR fraction, `parsing`, `checking`, `saving`); aborting the
-signal between steps (and inside OCR) rejects with `ImportError('CANCELLED')`. Failures are `ImportError`s whose `code`
+Progress is reported per phase (`reading`, `extracting` with an OCR fraction, `rereading` with the fraction of the second
+pass, `parsing`, `checking`, `saving`); aborting the signal between steps (and inside OCR, in both passes) rejects with
+`ImportError('CANCELLED')`. Failures are `ImportError`s whose `code`
 (`UNSUPPORTED_FORMAT`, `EMPTY_INPUT`, `FILE_TOO_LARGE`, `NO_TEXT`, `NOTHING_RECOGNIZED`, `ENGINE_UNAVAILABLE`,
 `EXTRACTION_FAILED`, `SAVE_FAILED`, `CANCELLED`) the screen turns into Romanian text. Limits: 40 MB per file, 200,000
 characters of pasted text.
+
+**Second OCR pass** (`second-pass.ts`, `improveReading` in `pipeline.ts`). One OCR pass is sensitive to the upscale (§11),
+so a photo whose first reading still carries one of the four warnings above is read again with
+`recognizeImage(file, { signal, onProgress, preprocessing: { scale: 3 } })` (`SECOND_PASS_SCALE`; the first pass uses the
+engine's default, 4x), parsed like the first, and the better reading is kept (`pickBetterPass`), in this order: a reading
+with no line never wins; the one whose lines add up to the printed total (no `SUM_MISMATCH` or `MISSING_TOTAL`); the one
+with fewer warnings; the one with fewer of the four retry warnings (so a date that was found, even if it lies in the
+future, beats a missing one); on a tie the first reading. A clean first reading costs no extra time, and PDFs and pasted
+text never retry. It is best effort: a second pass that fails, or finds no text, keeps the first reading; only
+cancellation stops the import. The `DUPLICATE` check and the review session use the reading that was kept. The screen
+shows one extra status while the second pass runs (`rereading`, "Se verifică încă o dată citirea pozei…", with its own
+progress bar and the same "Anulează" button).
 
 **Originals are never persisted or synced** (the contracts have no place for them). The picked image stays in memory in a
 **review session** (`getReviewSession(receiptId)`, the five most recent receipts) for the line crops, together with what
@@ -762,10 +776,12 @@ to close and focus returned to the opener; a refused confirmation moves focus to
 in a `role="alert"` region; the warnings panel is the `region` named "Avertismente". Money is formatted with the `@/domain`
 helpers, typed as `12,50` and normalised when the field loses focus.
 
-Tests: `src/import/testing.ts` has fakes for the ports (`fakeEngines`, `fakeParser` backed by the real validation,
-`fakeCatalog`, `testServices`); `src/features/receipts/testing.tsx` renders the whole app router over an in-memory
-database with a fixture's ground truth as the parser's answer. The flows drive import, review, an edited price and the
-confirmation for the Kaufland, METRO, Lidl and Mega Image fixtures.
+Tests: `src/import/testing.ts` has fakes for the ports (`fakeEngines`, which takes one OCR source per pass, `fakeParser`
+backed by the real validation, `fakeCatalog`, `testServices`); `src/features/receipts/testing.tsx` renders the whole app
+router over an in-memory database with a fixture's ground truth as the parser's answer. The flows drive import, review,
+an edited price and the confirmation for the Kaufland, METRO, Lidl and Mega Image fixtures. The second OCR pass is tested
+with the real parsers behind a fake engine that returns two readings of the Lidl and Mega Image OCR fixtures
+(`pipeline.second-pass.test.ts`).
 
 ## 13. GitHub sync (`src/sync`, `src/features/sync`)
 

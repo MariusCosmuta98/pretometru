@@ -19,6 +19,7 @@ export const ERROR_MESSAGES: Record<ImportErrorCode | 'UNKNOWN', string> = {
 export const PHASE_LABELS: Record<ImportPhase, string> = {
   reading: 'Se citește fișierul',
   extracting: 'Se extrage textul din bon',
+  rereading: 'Se verifică încă o dată citirea pozei',
   parsing: 'Se analizează bonul',
   checking: 'Se verifică bonul',
   saving: 'Se salvează ciorna',

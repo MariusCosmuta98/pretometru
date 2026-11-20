@@ -11,13 +11,21 @@ import { duplicateWarning, findDraftDuplicates } from './duplicates';
 import { ImportError, isAbortError, isImportError, throwIfCancelled } from './errors';
 import { sha256Hex } from './hash';
 import { saveDraft, type SavedReceipt } from './persist';
+import { needsSecondPass, pickBetterPass, SECOND_PASS_SCALE } from './second-pass';
 import type { ImportServices } from './services';
 import { openReviewSession, type ReviewSession } from './session';
 
 export const MAX_FILE_BYTES = 40 * 1024 * 1024;
 export const MAX_TEXT_CHARS = 200_000;
 
-export type ImportPhase = 'reading' | 'extracting' | 'parsing' | 'checking' | 'saving';
+export type ImportPhase =
+  | 'reading'
+  | 'extracting'
+  /** The second OCR pass of a photo whose first reading did not add up. */
+  | 'rereading'
+  | 'parsing'
+  | 'checking'
+  | 'saving';
 
 export interface ImportProgress {
   phase: ImportPhase;
@@ -51,6 +59,8 @@ interface Prepared {
   original?: Blob;
   /** Turns the input into parser input. */
   read: () => Promise<ReceiptSource>;
+  /** Reads the same input again in another way; only an image has a second pass. */
+  reread?: () => Promise<ReceiptSource>;
 }
 
 const SOURCE_KIND: Record<InputKind, SourceKind> = { pdf: 'pdf', image: 'image', text: 'text' };
@@ -127,20 +137,24 @@ async function prepareFile(
         origin,
         read: () => runEngine(signal, () => services.engines.extractPdfText(bytes)),
       };
-    case 'image':
+    case 'image': {
+      const recognize = (phase: ImportPhase, preprocessing?: { scale: number }) =>
+        runEngine(signal, () =>
+          services.engines.recognizeImage(file, {
+            ...(signal ? { signal } : {}),
+            ...(preprocessing ? { preprocessing } : {}),
+            onProgress: (fraction) => {
+              report({ phase, fraction });
+            },
+          }),
+        );
       return {
         origin,
         original: file,
-        read: () =>
-          runEngine(signal, () =>
-            services.engines.recognizeImage(file, {
-              ...(signal ? { signal } : {}),
-              onProgress: (fraction) => {
-                report({ phase: 'extracting', fraction });
-              },
-            }),
-          ),
+        read: () => recognize('extracting'),
+        reread: () => recognize('rereading', { scale: SECOND_PASS_SCALE }),
       };
+    }
     case 'text': {
       const source = textSource(new TextDecoder().decode(bytes));
       return { origin, read: () => Promise.resolve(source) };
@@ -177,10 +191,39 @@ function parse(services: ImportServices, source: ReceiptSource): ParsedReceipt {
 }
 
 /**
+ * A photo whose reading does not add up (or lost its date) is read once more at another upscale
+ * and the better of the two readings is kept (`second-pass.ts`). A clean reading costs nothing
+ * extra. Best effort: when the second pass fails the first reading stands; only a cancellation
+ * stops the import.
+ */
+async function improveReading(
+  services: ImportServices,
+  prepared: Prepared,
+  first: ParsedReceipt,
+  signal: AbortSignal | undefined,
+  report: (progress: ImportProgress) => void,
+): Promise<ParsedReceipt> {
+  if (!prepared.reread || !needsSecondPass(first)) return first;
+
+  report({ phase: 'rereading' });
+  try {
+    const source = await prepared.reread();
+    if (!hasText(source)) return first;
+    const second = parse(services, source);
+    throwIfCancelled(signal);
+    return pickBetterPass(first, second);
+  } catch (error) {
+    if (!isImportError(error) || error.code === 'CANCELLED') throw error;
+    return first;
+  }
+}
+
+/**
  * Reads a picked file or pasted text: format detection, the matching engine (pdf.js text, OCR or
  * the text itself), the store parser, a SHA-256 of the input and the duplicate check. Reports
- * progress and honours `signal` between steps (and inside OCR). Nothing is persisted: see
- * `importToDraft` for that. Fails with an `ImportError` whose `code` the screen turns into text.
+ * progress and honours `signal` between steps (and inside OCR). A photo that does not add up is
+ * read a second time. Nothing is persisted: see `importToDraft` for that. Fails with an
+ * `ImportError` whose `code` the screen turns into text.
  */
 export async function importReceipt(
   services: ImportServices,
@@ -204,8 +247,9 @@ export async function importReceipt(
   }
 
   report({ phase: 'parsing' });
-  const parsed = parse(services, source);
+  const firstReading = parse(services, source);
   throwIfCancelled(options.signal);
+  const parsed = await improveReading(services, prepared, firstReading, options.signal, report);
   if (parsed.lines.length === 0) {
     throw new ImportError('NOTHING_RECOGNIZED', 'No receipt line was recognised');
   }
