@@ -11,10 +11,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { getProductSummary } from '@/analytics';
-import { createProduct, rememberMappings, suggestMappings } from '@/catalog';
-import { testStore } from '@/catalog/testing';
-import { formatBani, formatMilliBani, SEED_CATEGORIES, type ParsedReceipt } from '@/domain';
-import { ensureSeed, saveReceipt, type LineInput, type PretometruDB } from '@/storage';
+import { createProduct, rememberMappings } from '@/catalog';
+import { importParsedReceipt } from '@/catalog/testing';
+import { formatBani, formatMilliBani, SEED_CATEGORIES } from '@/domain';
+import { ensureSeed } from '@/storage';
 import { createTestDb } from '@/storage/testing';
 import { getFixture } from '@fixtures';
 
@@ -27,75 +27,6 @@ const mega = getFixture('mega-image-2026-11-03');
 const now = new Date(kaufland.now);
 
 const MEGA_PAPER = { rawName: 'CARE HARTIE 10R 3S', ean: '594906503482' };
-
-/**
- * What the import flow does with a parsed receipt: suggest mappings, take the product the user
- * chose (or the one an alias or EAN assigned), apply a size the alias remembers, save the receipt,
- * then remember the choices for the next import.
- */
-async function importReceipt(
-  db: PretometruDB,
-  parsed: ParsedReceipt,
-  chosen: Record<string, string> = {},
-) {
-  const mappings = await suggestMappings(db, parsed);
-  const store = await testStore(db, parsed.chain);
-
-  const lines: LineInput[] = [];
-  const choices: Parameters<typeof rememberMappings>[2][number][] = [];
-  for (const [i, line] of parsed.lines.entries()) {
-    const mapping = mappings[i]!;
-    const productId = mapping.productId ?? chosen[line.rawName];
-    const product = productId ? await db.products.get(productId) : undefined;
-    const pack = line.pack ?? mapping.pack;
-    const categoryId = product?.categoryId ?? mapping.categoryId;
-
-    lines.push({
-      idx: line.idx,
-      rawName: line.rawName,
-      qty: line.qty,
-      unit: line.qtyUnit,
-      lineTotalBani: line.lineTotalBani,
-      discountBani: line.discountBani ?? 0,
-      kind: line.kind,
-      ...(line.ean ? { ean: line.ean } : {}),
-      ...(line.vatRate !== undefined ? { vatRate: line.vatRate } : {}),
-      ...(line.storeCategoryHint ? { storeCategoryHint: line.storeCategoryHint } : {}),
-      ...(productId ? { productId } : {}),
-      ...(categoryId ? { categoryId } : {}),
-      ...(pack ? { packQty: pack.qty, packUnit: pack.unit } : {}),
-    });
-    if (productId && line.kind === 'product') {
-      choices.push({
-        rawName: line.rawName,
-        productId,
-        ...(line.ean ? { ean: line.ean } : {}),
-        ...(pack ? { pack } : {}),
-      });
-    }
-  }
-
-  const saved = await saveReceipt(
-    db,
-    {
-      storeId: store.id,
-      ...(parsed.purchasedAt ? { purchasedAt: parsed.purchasedAt } : {}),
-      docType: parsed.docType,
-      totalBani: parsed.totals.grandTotalBani,
-      source: { kind: 'pdf' },
-      extraction: {
-        engine: 'fixture',
-        parser: parsed.meta.parser,
-        version: parsed.meta.parserVersion,
-        warnings: [],
-      },
-      status: 'confirmed',
-    },
-    lines,
-  );
-  await rememberMappings(db, parsed.chain, choices);
-  return saved;
-}
 
 async function world() {
   const db = await createTestDb();
@@ -112,11 +43,11 @@ async function world() {
   });
 
   // The user matches the two products by hand on the first two receipts...
-  await importReceipt(db, metro.expected, {
+  await importParsedReceipt(db, metro.expected, {
     '8 ROLE FL H IG ALBA 3STR': paper.id,
     '120BUC ARO BABY SERVETELE UMED': wipes.id,
   });
-  await importReceipt(db, kaufland.expected, {
+  await importParsedReceipt(db, kaufland.expected, {
     'KLC HARTIE IG 8ROLE': paper.id,
     'BUBUBEBE SERV 120BUC': wipes.id,
   });
@@ -124,7 +55,7 @@ async function world() {
   await rememberMappings(db, 'mega-image', [
     { ...MEGA_PAPER, productId: paper.id, pack: { qty: 10, unit: 'role' } },
   ]);
-  await importReceipt(db, mega.expected);
+  await importParsedReceipt(db, mega.expected);
   return { db, paper, wipes };
 }
 
