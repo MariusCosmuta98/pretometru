@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "chain": "kaufland",
+  "branch": { "code": "0000" },
+  "docType": "receipt",
+  "documentNo": "00001",
+  "purchasedAt": "2026-10-15T10:20:05",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 5140,
+    "voucherBani": 200,
+    "paidBani": 4940,
+    "vat": [
+      { "rate": 21, "grossBani": 2645, "netBani": 2186, "vatBani": 459 },
+      { "rate": 11, "grossBani": 2295, "netBani": 2068, "vatBani": 227 },
+      { "rate": 0, "grossBani": 200, "netBani": 200, "vatBani": 0 }
+    ]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "LAPTE UHT 1,5% 1L", "kind": "product", "qty": 6, "qtyUnit": "buc", "unitPriceBani": 459, "lineTotalBani": 2754, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Mopro/Brânză/Ouă", "pack": { "qty": 1, "unit": "l" } },
+    { "idx": 1, "rawName": "PROMO 3 LA PRET DE 2", "kind": "discount", "qty": 1, "qtyUnit": "buc", "lineTotalBani": -459, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Mopro/Brânză/Ouă" },
+    { "idx": 2, "rawName": "BERE BLONDA 0,5L", "kind": "product", "qty": 4, "qtyUnit": "buc", "unitPriceBani": 399, "lineTotalBani": 1596, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Băuturi alcoolice", "pack": { "qty": 0.5, "unit": "l" } },
+    { "idx": 3, "rawName": "GARANTIE AMBALAJ", "kind": "deposit", "qty": 4, "qtyUnit": "buc", "unitPriceBani": 50, "lineTotalBani": 200, "vatRate": 0, "vatClass": "D", "storeCategoryHint": "Băuturi alcoolice" },
+    { "idx": 4, "rawName": "PUNGA HARTIE", "kind": "bag", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 50, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Nonfood - Altele" },
+    { "idx": 5, "rawName": "SERVICIU LIVRARE", "kind": "fee", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 999, "vatRate": 21, "vatClass": "B", "storeCategoryHint": "Nonfood - Altele" }
+  ],
+  "meta": { "engine": "fixture", "parser": "ground-truth", "parserVersion": "1.0.0", "warnings": [] }
+}

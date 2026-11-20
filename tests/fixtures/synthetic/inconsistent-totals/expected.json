@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "chain": "kaufland",
+  "branch": { "code": "0000" },
+  "docType": "receipt",
+  "documentNo": "00002",
+  "purchasedAt": "2026-10-02T09:12:00",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 4900,
+    "paidBani": 4900,
+    "vat": [{ "rate": 11, "grossBani": 4900, "netBani": 4414, "vatBani": 486 }]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "PAINE ALBA 500G", "kind": "product", "qty": 2, "qtyUnit": "buc", "unitPriceBani": 349, "lineTotalBani": 698, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente", "pack": { "qty": 500, "unit": "g" } },
+    { "idx": 1, "rawName": "UNT 82% 200G", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1299, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente", "pack": { "qty": 200, "unit": "g" } },
+    { "idx": 2, "rawName": "ZAHAR 1KG", "kind": "product", "qty": 3, "qtyUnit": "buc", "unitPriceBani": 499, "lineTotalBani": 1597, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Alimente", "pack": { "qty": 1, "unit": "kg" } },
+    { "idx": 3, "rawName": "OUA 10", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1599, "vatRate": 11, "vatClass": "C", "storeCategoryHint": "Mopro/Brânză/Ouă" }
+  ],
+  "meta": {
+    "engine": "fixture",
+    "parser": "ground-truth",
+    "parserVersion": "1.0.0",
+    "warnings": [
+      { "code": "SUM_MISMATCH", "message": "Suma liniilor (51,93 lei) diferă de totalul bonului (49,00 lei) cu 2,93 lei." },
+      { "code": "LINE_ARITHMETIC", "message": "3 * 4,99 lei nu dă 15,97 lei.", "lineIdx": 2 },
+      { "code": "VAT_MISMATCH", "message": "Cota 11%: liniile dau 51,93 lei, sumarul TVA 49,00 lei." }
+    ]
+  }
+}

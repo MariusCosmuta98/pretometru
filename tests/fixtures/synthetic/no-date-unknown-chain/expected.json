@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "chain": "unknown",
+  "docType": "receipt",
+  "currency": "RON",
+  "totals": { "grandTotalBani": 1598 },
+  "lines": [
+    { "idx": 0, "rawName": "COLA 2L", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 899, "pack": { "qty": 2, "unit": "l" } },
+    { "idx": 1, "rawName": "CHIPS 150G", "kind": "product", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 699, "pack": { "qty": 150, "unit": "g" } }
+  ],
+  "meta": {
+    "engine": "fixture",
+    "parser": "ground-truth",
+    "parserVersion": "1.0.0",
+    "warnings": [
+      { "code": "MISSING_DATE", "message": "Nu am găsit data bonului." },
+      { "code": "UNKNOWN_CHAIN", "message": "Magazinul nu a fost recunoscut." }
+    ]
+  }
+}

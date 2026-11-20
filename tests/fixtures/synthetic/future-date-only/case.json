@@ -1,0 +1,9 @@
+{
+  "description": "Synthetic: a date-only purchase date (no time) after the case clock.",
+  "origin": "synthetic",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Receipt-level case: invented data and no source. `purchasedAt` is a bare `YYYY-MM-DD`: such a date is in the future only when the day itself is after the clock's day (2027-01-15 > 2026-11-20), so FUTURE_DATE applies; a receipt dated 2026-11-20 would not be flagged.",
+    "The date is kept as printed, never corrected; the review UI is where the user decides."
+  ]
+}

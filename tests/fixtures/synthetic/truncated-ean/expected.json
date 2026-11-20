@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "chain": "mega-image",
+  "docType": "receipt",
+  "purchasedAt": "2026-08-20T18:05:33",
+  "currency": "RON",
+  "totals": { "grandTotalBani": 4821 },
+  "lines": [
+    { "idx": 0, "rawName": "STILOU GEL 0,7MM", "kind": "product", "ean": "4006381333931", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 799 },
+    { "idx": 1, "rawName": "BATERII AA 4BUC", "kind": "product", "ean": "96385074", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 1299, "pack": { "qty": 4, "unit": "buc" } },
+    { "idx": 2, "rawName": "CAFEA MACINATA 250G", "kind": "product", "ean": "400638133393", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 2199, "pack": { "qty": 250, "unit": "g" } },
+    { "idx": 3, "rawName": "BANANE", "kind": "product", "ean": "4011", "qty": 0.874, "qtyUnit": "kg", "lineTotalBani": 524 }
+  ],
+  "meta": { "engine": "fixture", "parser": "ground-truth", "parserVersion": "1.0.0", "warnings": [] }
+}

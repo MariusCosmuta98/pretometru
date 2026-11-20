@@ -11,8 +11,16 @@ analytics. Layout, loader API (`@fixtures`) and conventions: [docs/architecture.
 | `metro-invoice-2026-08-12` | real   | `pdf-text`                 | ex-VAT invoice, per-line discounts, 2 VAT rates, size-first descriptions, online card payment |
 | `lidl-2026-12-29`          | real   | `ocr-text`, `pasted-text`  | OCR digit confusions (`68L`, `9,18`, `11,80%`), per-unit `n,000 BUC x price` lines, 3 card payments, **future date** (`FUTURE_DATE`), `expected.ocr-text.json` |
 | `mega-image-2026-11-03`    | real   | `ocr-text`, `pasted-text`  | very noisy OCR (watermark), EAN under each item (12 digits, truncated), chain only from the merchant code, `SUM_MISMATCH` on the OCR text, `expected.ocr-text.json` |
+| `promo-deposit-voucher`    | synthetic | none                    | every line kind: standalone `discount` (negative), `deposit`, `bag`, `fee`; packaging voucher; 3 VAT classes |
+| `weighed-and-multipack`    | synthetic | none                    | weighed lines with a price per kg (3-decimal qty), packs `2KG`, `4X125G`, `6X1,5L`, `8 role` |
+| `truncated-ean`            | synthetic | none                    | EAN-13, EAN-8, a 12-digit truncated EAN, a 4-digit PLU on a weighed line |
+| `inconsistent-totals`      | synthetic | none                    | `SUM_MISMATCH` + `LINE_ARITHMETIC` (line 2) + `VAT_MISMATCH` in one receipt |
+| `future-date-only`         | synthetic | none                    | bare `YYYY-MM-DD` date after the clock: `FUTURE_DATE` |
+| `no-date-unknown-chain`    | synthetic | none                    | no date, chain `unknown`, no optional field: `MISSING_DATE` + `UNKNOWN_CHAIN` |
+| `exvat-rounding`           | synthetic | none                    | ex-VAT invoice with discounts and totals on a half ban (round half away from zero), 1 ban per-rate gap |
 
-Synthetic edge cases follow.
+The synthetic cases are **receipt-level**: invented data and no source (no real layout to parse), so `sources` is empty
+and `fixture.expected` is the whole point: ground truth for validators, storage, catalog and analytics.
 
 ## Privacy
 
@@ -50,4 +58,6 @@ logged. Everything committed here went through the sanitizer:
 6. `npm test` (schemas, arithmetic, warnings, sizes, EAN check digits and "ground truth is readable in the source")
    and `npm run check:leaks`.
 
-Synthetic cases are written by hand, labelled `"origin": "synthetic"`, and contain no real data.
+Synthetic cases are written by hand, labelled `"origin": "synthetic"`, and contain no real data. A case without a layout
+worth parsing needs only `case.json` and `expected.json`; a synthetic case with a source must use a layout seen on a
+real receipt.

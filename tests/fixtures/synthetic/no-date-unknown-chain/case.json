@@ -1,0 +1,9 @@
+{
+  "description": "Synthetic: the least a receipt can carry: no purchase date, no store, no VAT information, only lines and a total.",
+  "origin": "synthetic",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Receipt-level case: invented data and no source. Chain `unknown` and a missing `purchasedAt` raise UNKNOWN_CHAIN and MISSING_DATE; the review UI has to ask for both before the receipt can be saved.",
+    "No storeName, branch, documentNo, vat or paidBani: every optional field of the contract is absent."
+  ]
+}

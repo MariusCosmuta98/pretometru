@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "chain": "metro",
+  "storeName": "METRO CASH & CARRY ROMANIA SRL",
+  "branch": { "city": "Cluj" },
+  "docType": "invoice",
+  "documentNo": "0000000000000042",
+  "purchasedAt": "2026-07-03T14:05",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 2634,
+    "paidBani": 2634,
+    "vat": [
+      { "rate": 21, "grossBani": 1552, "netBani": 1283, "vatBani": 269 },
+      { "rate": 11, "grossBani": 1082, "netBani": 975, "vatBani": 107 }
+    ]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "500G CAFEA ALPHA", "kind": "product", "ean": "5941000000018", "qty": 1, "qtyUnit": "buc", "discountBani": 61, "lineTotalBani": 1150, "vatRate": 21, "pack": { "qty": 500, "unit": "g" } },
+    { "idx": 1, "rawName": "250G CEAI BETA", "kind": "product", "ean": "5941000000025", "qty": 2, "qtyUnit": "buc", "discountBani": 28, "lineTotalBani": 1082, "vatRate": 11, "pack": { "qty": 250, "unit": "g" } },
+    { "idx": 2, "rawName": "1L SUC GAMMA", "kind": "product", "ean": "5941000000032", "qty": 1, "qtyUnit": "buc", "lineTotalBani": 403, "vatRate": 21, "pack": { "qty": 1, "unit": "l" } }
+  ],
+  "meta": { "engine": "fixture", "parser": "ground-truth", "parserVersion": "1.0.0", "warnings": [] }
+}

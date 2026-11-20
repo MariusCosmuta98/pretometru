@@ -322,7 +322,7 @@ tests/fixtures/
   index.ts                      typed loader (`@fixtures`), validates every file against the domain schemas
   README.md                     provenance, how to add a case, privacy rules
   real/<id>/                    sanitized real receipts: kaufland-2026-11-07, metro-invoice-2026-08-12, ...
-  synthetic/<id>/               hand-made edge cases (always labelled synthetic)
+  synthetic/<id>/               hand-made edge cases (always labelled synthetic); receipt-level ones have no source
     case.json                   { description, origin: 'real' | 'synthetic', now, notes? }
     expected.json               ParsedReceipt ground truth (meta.engine 'fixture')
     source.pdf-text.json        ReceiptSource kind 'pdf-text': pdf.js items { str, x, y, w, h }, whitespace items included
@@ -333,7 +333,7 @@ tests/fixtures/
 
 | Export                          | Meaning                                                                                      |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| `fixtures`                      | every case, real first then synthetic, each `{ id, group, description, notes, now, expected, sources[] }` |
+| `fixtures`                      | every case, real first then synthetic, each `{ id, group, description, notes, now, expected, sources[] }`; `sources` is empty for receipt-level synthetic cases |
 | `getFixture(id)`                | one case; throws and lists the available ids when unknown                                    |
 | `sourceOf(fixture, kind)`       | `{ kind, source, expected }` for that source kind (`expected` = `expected.<kind>.json` or the case's `expected.json`); throws when the case has none |
 | `normalizeForGolden(receipt)`   | drops what a golden comparison must ignore: `meta.engine/parser/parserVersion/confidence`, line `confidence/bbox/raw`, warning `message` and order. Warning codes and `lineIdx` still have to match |
@@ -360,9 +360,9 @@ Conventions every case follows (checked by `tests/fixtures.test.ts`):
 - **Sanitized, not edited.** Personal rows of real receipts (loyalty card, card slip, buyer block, phone and bank lines)
   are masked in place: letters become `x`/`X`, digits `0`, so the document keeps its shape and a parser must skip
   those rows. Document numbers are fakes (`12345`, `1234567890123456`). Do not "repair" masked rows.
-- Adding a case = adding a folder with `case.json`, `expected.json` and at least one `source.<kind>.json`; the loader
-  and `tests/fixtures.test.ts` pick it up. Contract changes update `docs/contracts.md`, the schemas and every affected
-  `expected*.json` in one commit.
+- Adding a case = adding a folder with `case.json`, `expected.json` and at least one `source.<kind>.json` (a synthetic
+  receipt-level case may have none); the loader and `tests/fixtures.test.ts` pick it up. Contract changes update
+  `docs/contracts.md`, the schemas and every affected `expected*.json` in one commit.
 
 ## 8. Commands
 

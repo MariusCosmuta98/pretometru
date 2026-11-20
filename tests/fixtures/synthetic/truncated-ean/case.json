@@ -1,0 +1,10 @@
+{
+  "description": "Synthetic: product codes of every length a receipt prints: EAN-13, EAN-8, a 12-digit EAN with its check digit cut off, and a 4-digit PLU on a weighed line.",
+  "origin": "synthetic",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Receipt-level case: invented data and no source. Use `fixture.expected` directly, e.g. for catalog matching by EAN.",
+    "`ean` is kept exactly as printed (4 to 14 digits). Only the 13-digit code carries a valid GS1 check digit; the 12-digit one is the same code as the first line minus its last digit, so a matcher that wants to join them has to account for that.",
+    "A 4-digit PLU (`4011`, loose bananas) identifies a produce type, not a product; the weighed line has no unit price."
+  ]
+}

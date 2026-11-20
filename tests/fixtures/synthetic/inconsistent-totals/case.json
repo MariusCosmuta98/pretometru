@@ -1,0 +1,10 @@
+{
+  "description": "Synthetic: a receipt that disagrees with itself in all three ways validation checks: the lines do not add up to the total, one line has the wrong arithmetic, and the VAT summary does not match the lines.",
+  "origin": "synthetic",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Receipt-level case: invented data and no source. The ground truth is what a reader of a misread or misprinted receipt returns: the values as read, with the warnings that flag them (not a repaired receipt).",
+    "SUM_MISMATCH: the lines add up to 51,93 against a total of 49,00 (beyond the 5 bani tolerance). LINE_ARITHMETIC on line 2: 3 * 4,99 is 14,97, the line says 15,97. VAT_MISMATCH: the 11% group of the lines is 51,93, the printed summary 49,00.",
+    "The total, the VAT summary and the amount paid agree with each other (49,00), as they would when a line was misread or an extra line was added."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "chain": "lidl",
+  "storeName": "S.C. LIDL DISCOUNT S.R.L.",
+  "branch": { "city": "Cluj-Napoca" },
+  "docType": "receipt",
+  "purchasedAt": "2026-09-05T11:42:10",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 7108,
+    "paidBani": 7108,
+    "vat": [
+      { "rate": 21, "vatBani": 503 },
+      { "rate": 11, "vatBani": 417 }
+    ]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "Cartofi albi 2KG", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 699, "lineTotalBani": 699, "vatRate": 11, "vatClass": "B", "pack": { "qty": 2, "unit": "kg" } },
+    { "idx": 1, "rawName": "Banane", "kind": "product", "qty": 1.234, "qtyUnit": "kg", "unitPriceBani": 599, "lineTotalBani": 739, "vatRate": 11, "vatClass": "B" },
+    { "idx": 2, "rawName": "Telemea de vaca", "kind": "product", "qty": 0.456, "qtyUnit": "kg", "unitPriceBani": 3890, "lineTotalBani": 1774, "vatRate": 11, "vatClass": "B" },
+    { "idx": 3, "rawName": "Iaurt 4X125G", "kind": "product", "qty": 2, "qtyUnit": "buc", "unitPriceBani": 499, "lineTotalBani": 998, "vatRate": 11, "vatClass": "B", "pack": { "qty": 500, "unit": "g" } },
+    { "idx": 4, "rawName": "Apa plata 6X1,5L", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 1299, "lineTotalBani": 1299, "vatRate": 21, "vatClass": "A", "pack": { "qty": 9, "unit": "l" } },
+    { "idx": 5, "rawName": "Hartie igienica 8 role", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 1599, "lineTotalBani": 1599, "vatRate": 21, "vatClass": "A", "pack": { "qty": 8, "unit": "role" } }
+  ],
+  "meta": { "engine": "fixture", "parser": "ground-truth", "parserVersion": "1.0.0", "warnings": [] }
+}

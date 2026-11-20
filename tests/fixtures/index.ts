@@ -45,7 +45,10 @@ export interface Fixture {
   now: string;
   /** Ground truth shared by all sources of the case. */
   expected: ParsedReceipt;
-  /** One entry per `source.<kind>.json`, ordered pdf-text, ocr-text, pasted-text. */
+  /**
+   * One entry per `source.<kind>.json`, ordered pdf-text, ocr-text, pasted-text. Empty only for
+   * receipt-level synthetic cases: use `expected` directly.
+   */
   sources: FixtureSource[];
 }
 
@@ -126,7 +129,11 @@ function buildFixture(raw: RawCase): Fixture {
     };
     return [entry as FixtureSource]; // `source.kind === kind` was checked above
   });
-  if (sources.length === 0) throw new Error(`Fixture ${where} has no source.<kind>.json`);
+  // Synthetic cases may be receipt-level only (no source): ground truth for validators, storage,
+  // catalog and analytics, where no real layout exists to parse.
+  if (sources.length === 0 && raw.group === 'real') {
+    throw new Error(`Fixture ${where} has no source.<kind>.json`);
+  }
 
   return {
     id: raw.id,

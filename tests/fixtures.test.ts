@@ -115,6 +115,12 @@ describe.each(fixtures.map((fixture) => [fixture.id, fixture] as const))(
         for (const code of comparable) {
           expect(declared.has(code), `warning ${code}`).toBe(derived.has(code));
         }
+
+        const offLines = receipt.lines.filter(lineArithmeticOff).map((line) => line.idx);
+        const flaggedLines = receipt.meta.warnings
+          .filter((warning) => warning.code === 'LINE_ARITHMETIC')
+          .map((warning) => warning.lineIdx);
+        expect(flaggedLines, 'lines flagged LINE_ARITHMETIC').toEqual(offLines);
       },
     );
 
@@ -155,6 +161,14 @@ describe.each(fixtures.map((fixture) => [fixture.id, fixture] as const))(
 );
 
 describe('loader', () => {
+  it('gives every real case a source, while synthetic receipt-level cases may have none', () => {
+    const real = fixtures.filter((fixture) => fixture.group === 'real');
+
+    expect(real.length).toBeGreaterThan(0);
+    expect(real.every((fixture) => fixture.sources.length > 0)).toBe(true);
+    expect(getFixture('promo-deposit-voucher').sources).toEqual([]);
+  });
+
   it('finds cases by id and sources by kind, and says what exists when it cannot', () => {
     const fixture = getFixture('kaufland-2026-11-07');
 

@@ -1,0 +1,10 @@
+{
+  "description": "Synthetic: an ex-VAT invoice whose discounts and line totals land exactly on a half ban, plus the 1 ban gap between per-line and per-rate rounding that METRO invoices show.",
+  "origin": "synthetic",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Receipt-level case: invented data and no source. Conversions round half away from zero (money.ts `roundDiv`): the ex-VAT discount 0,50 at 21% is 0,605 -> 61 bani, 0,25 at 11% is 0,2775 -> 28; the line value 9,50 at 21% is 11,495 -> 1150 and 9,75 at 11% is 10,8225 -> 1082.",
+    "Printed per-rate groups: 21% net 12,83 + VAT 2,69 = 15,52 and 11% net 9,75 + VAT 1,07 = 10,82, total 26,34. The lines add up to 26,35 (21%: 15,53): 1 ban of rounding, inside the tolerance, so no SUM_MISMATCH or VAT_MISMATCH.",
+    "As on the real METRO invoice, no unitPriceBani: the ex-VAT list price is printed, not a VAT-inclusive one."
+  ]
+}

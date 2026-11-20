@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "chain": "lidl",
+  "storeName": "S.C. LIDL DISCOUNT S.R.L.",
+  "branch": { "city": "Cluj-Napoca" },
+  "docType": "receipt",
+  "purchasedAt": "2027-01-15",
+  "currency": "RON",
+  "totals": {
+    "grandTotalBani": 499,
+    "paidBani": 499,
+    "vat": [{ "rate": 11, "vatBani": 49 }]
+  },
+  "lines": [
+    { "idx": 0, "rawName": "Paine 500G", "kind": "product", "qty": 1, "qtyUnit": "buc", "unitPriceBani": 499, "lineTotalBani": 499, "vatRate": 11, "vatClass": "B", "pack": { "qty": 500, "unit": "g" } }
+  ],
+  "meta": {
+    "engine": "fixture",
+    "parser": "ground-truth",
+    "parserVersion": "1.0.0",
+    "warnings": [{ "code": "FUTURE_DATE", "message": "Data bonului este în viitor." }]
+  }
+}

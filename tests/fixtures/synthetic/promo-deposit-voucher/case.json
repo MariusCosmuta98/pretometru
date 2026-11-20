@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic: every line kind in one receipt. A standalone promo discount (negative line), a deposit with its packaging voucher, a carrier bag and a service fee, in three VAT classes.",
+  "origin": "synthetic",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Receipt-level case: invented data and no source (the layout is not taken from a real receipt). Use `fixture.expected` directly, e.g. for validators, storage, catalog and analytics.",
+    "kind `discount`: lineTotalBani is negative and the line is no product (a price tracker must not read it as one); `deposit`, `bag` and `fee` are not products either.",
+    "The voucher (200) is a payment-side deduction: grand total 51,40, paid 49,40. VAT classes follow the Kaufland convention: B = 21%, C = 11%, D = 0%.",
+    "Every line is arithmetically exact (qty * unitPriceBani = lineTotalBani); the standalone discount carries no unit price."
+  ]
+}

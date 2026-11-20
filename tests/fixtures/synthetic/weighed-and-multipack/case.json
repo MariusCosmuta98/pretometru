@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic: weighed lines with a printed price per kg (3-decimal quantities) and the pack-size forms of a product name: `2KG`, `4X125G` (multipack), `6X1,5L`, `8 role`.",
+  "origin": "synthetic",
+  "now": "2026-11-20T12:00:00.000Z",
+  "notes": [
+    "Receipt-level case: invented data and no source. Use `fixture.expected` directly.",
+    "Weighed lines have qtyUnit `kg`, a 3-decimal qty and unitPriceBani per kg: lineTotalBani = round(qty * unitPriceBani), i.e. 1,234 kg * 5,99 = 7,39 and 0,456 kg * 38,90 = 17,74.",
+    "Multipacks give the whole content: `4X125G` = 500 g, `6X1,5L` = 9 l (parsePackSize; `pack` is the content of ONE sold unit).",
+    "Only the VAT amounts are printed (the Lidl convention), so totals.vat has no net or gross. Classes: A = 21%, B = 11%."
+  ]
+}
