@@ -10,6 +10,8 @@
 import type { ReceiptSource } from '../src/domain/receipt-source';
 
 export type PdfSource = Extract<ReceiptSource, { kind: 'pdf-text' }>;
+export type OcrSource = Extract<ReceiptSource, { kind: 'ocr-text' }>;
+export type PastedSource = Extract<ReceiptSource, { kind: 'pasted-text' }>;
 type PdfItem = PdfSource['pages'][number]['items'][number];
 
 /** Items whose baselines differ by less than this (pdf user space) belong to the same row. */
@@ -97,7 +99,8 @@ export interface PdfRule {
   name: string;
   data: DataKind;
   when: (row: RowInfo) => boolean;
-  apply: 'mask' | 'zero-digits' | RowTransform;
+  /** `keep` leaves the row as it is but shields it from the rules after this one. */
+  apply: 'mask' | 'zero-digits' | 'keep' | RowTransform;
   /** Rules must match at least one row, so a drifting extraction fails loudly instead of leaking. */
   optional?: boolean;
 }
@@ -140,6 +143,7 @@ export interface SanitizeResult<S> {
 }
 
 function transformRow(apply: PdfRule['apply'], strings: string[]): string[] {
+  if (apply === 'keep') return strings;
   if (apply === 'mask') return strings.map(maskText);
   if (apply === 'zero-digits') return strings.map(zeroDigits);
   return apply(strings);
@@ -191,6 +195,100 @@ export function sanitizePdfText(
   }
 
   return { source: { ...source, pages }, removed };
+}
+
+export interface OcrRule {
+  name: string;
+  data: DataKind;
+  when: (line: RowInfo) => boolean;
+  /** A function receives the line text and returns its replacement. */
+  apply: 'mask' | 'zero-digits' | 'keep' | ((line: string) => string);
+  optional?: boolean;
+}
+
+function transformLine(apply: OcrRule['apply'], line: string): string {
+  if (apply === 'keep') return line;
+  if (apply === 'mask') return maskText(line);
+  if (apply === 'zero-digits') return zeroDigits(line);
+  return apply(line);
+}
+
+/**
+ * Same contract as `sanitizePdfText` for Tesseract output. `text` is rebuilt from the lines, so
+ * the two never disagree; a source whose `text` is not its lines joined by newlines is refused.
+ */
+export function sanitizeOcrText(
+  source: OcrSource,
+  rules: readonly OcrRule[],
+): SanitizeResult<OcrSource> {
+  const trailing = /\n*$/.exec(source.text)?.[0] ?? '';
+  const body = source.text.slice(0, source.text.length - trailing.length);
+  const original = source.lines ? source.lines.map((line) => line.text) : body.split('\n');
+  if (source.lines && original.join('\n') !== body) {
+    throw new Error(
+      'The OCR text and its lines disagree: refusing to sanitise a source I cannot rebuild',
+    );
+  }
+
+  const removed: Removed[] = [];
+  const matches = new Set<OcrRule>();
+  const rewritten = original.map((text, index) => {
+    const rule = rules.find((candidate) =>
+      candidate.when({ page: 0, index, text, rows: original }),
+    );
+    if (!rule) return text;
+    matches.add(rule);
+    const next = transformLine(rule.apply, text);
+    if (next !== text) removed.push({ text, data: rule.data });
+    return next;
+  });
+
+  for (const rule of rules) {
+    if (!rule.optional && !matches.has(rule)) {
+      throw new Error(
+        `Rule "${rule.name}" matched no line: the extraction no longer fits its recipe`,
+      );
+    }
+  }
+
+  return {
+    source: {
+      ...source,
+      text: rewritten.join('\n') + trailing,
+      ...(source.lines
+        ? {
+            lines: source.lines.map((line, index) => ({
+              ...line,
+              text: rewritten[index] ?? line.text,
+            })),
+          }
+        : {}),
+    },
+    removed,
+  };
+}
+
+/**
+ * The clean variant of a sanitised OCR source, as a copy from iOS Live Text or Google Lens would
+ * give it: the same lines with every misread corrected, by line index, from the printed receipt.
+ * Masked lines stay masked.
+ */
+export function pastedFromOcr(
+  source: OcrSource,
+  corrections: Readonly<Record<number, string>>,
+): PastedSource {
+  const lines =
+    source.lines?.map((line) => line.text) ?? source.text.replace(/\n+$/, '').split('\n');
+  for (const key of Object.keys(corrections)) {
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index >= lines.length) {
+      throw new Error(`Correction for line ${key}, but the source has ${lines.length} lines`);
+    }
+  }
+  return {
+    kind: 'pasted-text',
+    text: lines.map((line, index) => corrections[index] ?? line).join('\n'),
+  };
 }
 
 const fold = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();

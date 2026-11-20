@@ -6,9 +6,12 @@ import {
   formatFixtureJson,
   immediatelyAfter,
   maskText,
+  pastedFromOcr,
   pdfRows,
+  sanitizeOcrText,
   sanitizePdfText,
   zeroDigits,
+  type OcrSource,
   type PdfSource,
   type RowInfo,
 } from './sanitize.ts';
@@ -193,6 +196,118 @@ describe('sanitizePdfText: drift guard', () => {
 
     expect(() => sanitizePdfText(fakeReceipt(), [never])).toThrow(/buyer block/);
     expect(() => sanitizePdfText(fakeReceipt(), [{ ...never, optional: true }])).not.toThrow();
+  });
+});
+
+const ocrLine = (text: string, y: number) => ({
+  text,
+  confidence: 90,
+  bbox: { x: 5, y, w: text.length * 3, h: 10 },
+});
+
+function fakeOcr(): OcrSource {
+  const texts = [
+    'FAKE SHOP SRL',
+    'Ion Popescu',
+    CLIENT_LINE,
+    'MILK 1L 1,00 A',
+    'DATA:01/01/2026 ORA:10-00-00',
+    'Multumim pentru cumparaturi',
+  ];
+  return {
+    kind: 'ocr-text',
+    text: `${texts.join('\n')}\n`,
+    lines: texts.map((text, index) => ocrLine(text, 10 + index * 20)),
+    confidence: 88,
+    imageSize: { w: 100, h: 200 },
+  };
+}
+
+describe('sanitizeOcrText', () => {
+  const rules = [
+    {
+      name: 'buyer',
+      data: 'personal' as const,
+      when: between(/^FAKE SHOP/, /^MILK/),
+      apply: 'mask' as const,
+    },
+    { name: 'footer', data: 'business' as const, when: after(/^DATA:/), apply: 'mask' as const },
+  ];
+
+  it('masks matching lines in `lines` and in `text`, keeping geometry, confidence and layout', () => {
+    const original = fakeOcr();
+    const { source, removed } = sanitizeOcrText(original, rules);
+
+    const expected = [
+      'FAKE SHOP SRL',
+      'Xxx Xxxxxxx',
+      'Xx. xxxxxx: 0000000',
+      'MILK 1L 1,00 A',
+      'DATA:01/01/2026 ORA:10-00-00',
+      'Xxxxxxxx xxxxxx xxxxxxxxxxx',
+    ];
+    expect(source.text).toBe(`${expected.join('\n')}\n`);
+    expect(source.lines?.map((line) => line.text)).toEqual(expected);
+    expect(source.lines?.map(({ confidence, bbox }) => [confidence, bbox])).toEqual(
+      original.lines?.map(({ confidence, bbox }) => [confidence, bbox]),
+    );
+    expect(source.confidence).toBe(88);
+    expect(removed).toEqual([
+      { text: 'Ion Popescu', data: 'personal' },
+      { text: CLIENT_LINE, data: 'personal' },
+      { text: 'Multumim pentru cumparaturi', data: 'business' },
+    ]);
+  });
+
+  it('`keep` shields a line from later rules, and a function rewrites one line', () => {
+    const { source } = sanitizeOcrText(fakeOcr(), [
+      { name: 'keep', data: 'business', when: ({ text }) => text.startsWith('Ion'), apply: 'keep' },
+      { name: 'rest', data: 'personal', when: between(/^FAKE SHOP/, /^MILK/), apply: 'mask' },
+      {
+        name: 'time',
+        data: 'identifiers',
+        when: ({ text }) => text.startsWith('DATA:'),
+        apply: (line) => line.replace(/ORA:.*/, 'ORA:00-00-00'),
+      },
+    ]);
+
+    expect(source.lines?.map((line) => line.text).slice(1, 5)).toEqual([
+      'Ion Popescu',
+      'Xx. xxxxxx: 0000000',
+      'MILK 1L 1,00 A',
+      'DATA:01/01/2026 ORA:00-00-00',
+    ]);
+  });
+
+  it('works on the text alone when there are no lines', () => {
+    const { lines: _lines, ...withoutLines } = fakeOcr();
+    const { source } = sanitizeOcrText(withoutLines, rules);
+
+    expect(source.lines).toBeUndefined();
+    expect(source.text.split('\n')[1]).toBe('Xxx Xxxxxxx');
+  });
+
+  it('refuses a source whose text and lines disagree, and fails when a rule matches nothing', () => {
+    const skewed = { ...fakeOcr(), text: 'something else\n' };
+
+    expect(() => sanitizeOcrText(skewed, rules)).toThrow(/disagree/);
+    expect(() =>
+      sanitizeOcrText(fakeOcr(), [
+        { name: 'ghost', data: 'personal', when: () => false, apply: 'mask' },
+      ]),
+    ).toThrow(/ghost/);
+  });
+});
+
+describe('pastedFromOcr', () => {
+  it('builds the clean pasted variant by correcting misread lines, and refuses unknown lines', () => {
+    const pasted = pastedFromOcr(fakeOcr(), { 3: 'MILK 1L 1,10 A' });
+
+    expect(pasted.kind).toBe('pasted-text');
+    expect(pasted.text.split('\n')).toHaveLength(6);
+    expect(pasted.text.split('\n')[3]).toBe('MILK 1L 1,10 A');
+    expect(pasted.text.split('\n')[0]).toBe('FAKE SHOP SRL');
+    expect(() => pastedFromOcr(fakeOcr(), { 9: 'x' })).toThrow(/line 9/);
   });
 });
 

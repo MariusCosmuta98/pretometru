@@ -16,16 +16,28 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { PDF_RECIPES, type PdfRecipe } from './fixture-recipes.ts';
+import { join } from 'node:path';
+import { RECIPES, type Recipe } from './fixture-recipes.ts';
 import { isScannablePath, parseDenylist } from './leak-check.ts';
-import { denylistTerms, formatFixtureJson, sanitizePdfText, type PdfSource } from './sanitize.ts';
+import {
+  denylistTerms,
+  formatFixtureJson,
+  pastedFromOcr,
+  sanitizeOcrText,
+  sanitizePdfText,
+  type OcrSource,
+  type PastedSource,
+  type PdfSource,
+  type Removed,
+} from './sanitize.ts';
 
 const privateDir = process.env['PRETOMETRU_PRIVATE_DIR'] ?? join(homedir(), '.pretometru-private');
 const denylistPath = join(privateDir, 'denylist.txt');
 
-const isPdfSource = (value: unknown): value is PdfSource =>
-  typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'pdf-text';
+const hasKind = (value: unknown, kind: string): boolean =>
+  typeof value === 'object' && value !== null && 'kind' in value && value.kind === kind;
+const isPdfSource = (value: unknown): value is PdfSource => hasKind(value, 'pdf-text');
+const isOcrSource = (value: unknown): value is OcrSource => hasKind(value, 'ocr-text');
 
 const foldText = (text: string): string =>
   text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -45,24 +57,36 @@ function repositoryCorpus(): string {
   return foldText(listing.map((path) => readFileSync(path, 'utf8')).join('\n'));
 }
 
-function sanitizePdf(recipe: PdfRecipe): { terms: string[]; changed: number } {
+function sanitizeRecipe(recipe: Recipe): { terms: string[]; changed: number } {
   const raw: unknown = JSON.parse(
     readFileSync(join(privateDir, 'extracted', recipe.extraction), 'utf8'),
   );
-  if (!isPdfSource(raw)) throw new Error(`${recipe.extraction} is not a pdf-text extraction`);
 
-  const { source, removed } = sanitizePdfText(raw, recipe.rules);
-  const kept = source.pages.flatMap((page) => page.items.map((item) => item.str));
-  const target = join('tests', 'fixtures', 'real', recipe.id, `source.${recipe.kind}.json`);
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, formatFixtureJson(source));
+  let result: { source: PdfSource | OcrSource; removed: Removed[]; kept: string[] };
+  let pasted: PastedSource | undefined;
+  if (recipe.kind === 'pdf-text') {
+    if (!isPdfSource(raw)) throw new Error(`${recipe.extraction} is not a pdf-text extraction`);
+    const { source, removed } = sanitizePdfText(raw, recipe.rules);
+    const kept = source.pages.flatMap((page) => page.items.map((item) => item.str));
+    result = { source, removed, kept };
+  } else {
+    if (!isOcrSource(raw)) throw new Error(`${recipe.extraction} is not an ocr-text extraction`);
+    const { source, removed } = sanitizeOcrText(raw, recipe.rules);
+    result = { source, removed, kept: source.lines?.map((line) => line.text) ?? [source.text] };
+    if (recipe.pasted) pasted = pastedFromOcr(source, recipe.pasted);
+  }
 
-  return { terms: denylistTerms(removed, kept), changed: removed.length };
+  const directory = join('tests', 'fixtures', 'real', recipe.id);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, `source.${recipe.kind}.json`), formatFixtureJson(result.source));
+  if (pasted) writeFileSync(join(directory, 'source.pasted-text.json'), formatFixtureJson(pasted));
+
+  return { terms: denylistTerms(result.removed, result.kept), changed: result.removed.length };
 }
 
 function main(): void {
   const wanted = process.argv.slice(2);
-  const recipes = PDF_RECIPES.filter((recipe) => wanted.length === 0 || wanted.includes(recipe.id));
+  const recipes = RECIPES.filter((recipe) => wanted.length === 0 || wanted.includes(recipe.id));
   if (recipes.length === 0) throw new Error('No recipe matches the given case ids');
 
   // No case ids: rebuild every fixture and the denylist from scratch. With ids: merge into it.
@@ -72,10 +96,10 @@ function main(): void {
       : parseDenylist(readFileSync(denylistPath, 'utf8')),
   );
   for (const recipe of recipes) {
-    const result = sanitizePdf(recipe);
+    const result = sanitizeRecipe(recipe);
     result.terms.forEach((term) => terms.add(term));
     console.log(
-      `${recipe.id}: ${result.changed} item(s) rewritten, ${result.terms.length} term(s) collected`,
+      `${recipe.id}: ${result.changed} piece(s) of text rewritten, ${result.terms.length} term(s) collected`,
     );
   }
 

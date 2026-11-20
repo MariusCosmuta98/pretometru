@@ -78,9 +78,10 @@ const PATTERN_RULES: readonly PatternRule[] = [
   },
   {
     rule: 'card-number',
-    // 15-19 digits, ungrouped or grouped (4-4-4-4[-n] or 4-6-5), that pass the Luhn check.
+    // 15-19 digits, ungrouped or grouped (4-4-4-4[-n] or 4-6-5), that pass the Luhn check. The
+    // fraction of a decimal number (`4.666666666666667`) is not a card number.
     pattern:
-      /(?<![\p{L}\d_])(?:\d{4}(?:[ -]\d{4}){3}(?:[ -]\d{1,3})?|\d{4}[ -]\d{6}[ -]\d{5}|\d{15,19})(?![\p{L}\d_])/gu,
+      /(?<![\p{L}\d_])(?<!\d[.,])(?:\d{4}(?:[ -]\d{4}){3}(?:[ -]\d{1,3})?|\d{4}[ -]\d{6}[ -]\d{5}|\d{15,19})(?![\p{L}\d_])/gu,
     accept: (match) =>
       nonZeroDigitCount(match[0]) >= MIN_NON_ZERO_DIGITS_IN_CARD_RUN &&
       passesLuhn(digitsOf(match[0])),

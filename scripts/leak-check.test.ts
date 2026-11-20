@@ -50,6 +50,11 @@ describe('scanText: generic rules', () => {
     expect(rules('Cod 1234567890123456')).toEqual([]);
   });
 
+  it('does not mistake the long decimals of coordinates for card numbers', () => {
+    const digits = withLuhnCheckDigit('411111111111111');
+    expect(rules(`"x": 4.${digits}, "w": 26,${digits}`)).toEqual([]);
+  });
+
   it('flags a masked card number with visible digits, but not an all-zero placeholder', () => {
     const masked = `${'#'.repeat(12)}${'4891'}`;
     expect(rules(`Card: ${masked}`)).toEqual(['card-number']);

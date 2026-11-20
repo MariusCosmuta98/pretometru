@@ -10,6 +10,7 @@ import {
   between,
   immediatelyAfter,
   zeroDigits,
+  type OcrRule,
   type PdfRule,
   type RowTransform,
 } from './sanitize.ts';
@@ -22,6 +23,20 @@ export interface PdfRecipe {
   extraction: string;
   rules: readonly PdfRule[];
 }
+
+export interface OcrRecipe {
+  id: string;
+  kind: 'ocr-text';
+  extraction: string;
+  rules: readonly OcrRule[];
+  /**
+   * Misread lines of the OCR text (by index) and what the receipt actually prints. Together with
+   * the sanitised lines they make the clean `source.pasted-text.json`. Verified against the image.
+   */
+  pasted?: Readonly<Record<number, string>>;
+}
+
+export type Recipe = PdfRecipe | OcrRecipe;
 
 /** Same-length stand-in for a document number: reads as a number, is never a real one. */
 export function fakeDigits(digits: string): string {
@@ -144,4 +159,72 @@ const METRO_RECIPE: PdfRecipe = {
   ],
 };
 
-export const PDF_RECIPES: readonly PdfRecipe[] = [KAUFLAND_RECIPE, METRO_RECIPE];
+// Lidl: raw Tesseract output of the original screenshot (misreads included). Everything after the
+// VAT lines up to the date line is the card slip; after "BON FISCAL" comes promo and store footer.
+const LIDL_RECIPE: OcrRecipe = {
+  id: 'lidl-2026-12-29',
+  kind: 'ocr-text',
+  extraction: 'lidl-2026-12-29.ocr-raw.json',
+  rules: [
+    {
+      name: 'vat and payment lines',
+      data: 'business',
+      when: ({ text }) => /^(TVA [AB]\b|CARD\s+\d)/i.test(text),
+      apply: 'keep',
+    },
+    {
+      name: 'card slip',
+      data: 'identifiers',
+      when: between(/^TOTAL TVA/i, /^D?ATA\b/i),
+      apply: 'mask',
+    },
+    { name: 'footer', data: 'business', when: after(/^BON FISCAL/i), apply: 'mask' },
+  ],
+  pasted: {
+    6: 'Saci menajeri 60L 8,10 A',
+    13: '1,000 BUC x 9,10',
+    19: 'TVA B 11,00% 2,73',
+    28: 'DATA:29/12/2026 ORA:17-12-30',
+  },
+};
+
+// Mega Image: Tesseract output of the preprocessed screenshot (the raw run is unreadable). The
+// receipt prints no store name; the merchant code line is the chain cue, so its letters stay.
+const MEGA_RECIPE: OcrRecipe = {
+  id: 'mega-image-2026-11-03',
+  kind: 'ocr-text',
+  extraction: 'mega-image-2026-11-03.ocr-pre.json',
+  rules: [
+    {
+      name: 'merchant code',
+      data: 'identifiers',
+      when: ({ text }) => /COMERCIANT/i.test(text),
+      apply: 'zero-digits',
+    },
+    {
+      name: 'transaction date and time',
+      data: 'business',
+      when: ({ text }) => /\d\d\.\d\d\.\d\d\s+\S+\s+\d\d:\d\d:\d\d/.test(text),
+      apply: 'keep',
+    },
+    {
+      name: 'number under the total',
+      data: 'identifiers',
+      when: immediatelyAfter(/^TOTAL\b/i),
+      apply: 'zero-digits',
+    },
+    { name: 'card slip', data: 'identifiers', when: after(/^TOTAL\b/i), apply: 'mask' },
+  ],
+  pasted: {
+    0: 'ALWAYS ULTRA 16BUC 17,89',
+    2: 'CAJU CRUDE 200G 14,99',
+    3: '859042107579',
+    4: 'EMMA NUCI 200G 12,99',
+    5: '859042107549',
+    6: 'CARE HARTIE 10R 3S 19,99',
+    7: '594906503482',
+    17: 'DATA 03.11.26 ORA 16:57:08',
+  },
+};
+
+export const RECIPES: readonly Recipe[] = [KAUFLAND_RECIPE, METRO_RECIPE, LIDL_RECIPE, MEGA_RECIPE];
