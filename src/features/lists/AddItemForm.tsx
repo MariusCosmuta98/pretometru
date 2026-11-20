@@ -109,7 +109,7 @@ export function AddItemForm({
             ref={inputRef}
             type="text"
             className={inputClass}
-            placeholder="Caută un produs sau scrie un articol"
+            placeholder="ex.: lapte, pâine"
             autoComplete="off"
             maxLength={120}
             value={query}

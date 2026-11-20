@@ -2,6 +2,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { loadListsOverview } from '@/lists';
 import { noticeClass } from '@/ui/controls';
+import { Chevron } from './Chevron';
 import { ListCard } from './ListCard';
 import { NewListForm } from './NewListForm';
 import { Failure, Loading } from './notices';
@@ -69,9 +70,10 @@ export function Component() {
       </section>
 
       {archived.length > 0 && (
-        <details>
+        <details className="group">
           <summary className="flex min-h-11 cursor-pointer items-center text-base font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
             Arhivate ({archived.length})
+            <Chevron />
           </summary>
           <ul className="mt-2 space-y-2">
             {archived.map((summary) => (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { setSetting, type PretometruDB } from '@/storage';
 import { inputClass } from '@/ui/controls';
+import { Chevron } from './Chevron';
 import { formatDays } from './format';
 
 const WINDOWS = [30, 60, 90, 180, 365];
@@ -28,9 +29,10 @@ export function PriceSettings({
   };
 
   return (
-    <details className="rounded-xl border border-slate-200 bg-white px-4 py-1 dark:border-slate-800 dark:bg-slate-900">
+    <details className="group rounded-xl border border-slate-200 bg-white px-4 py-1 dark:border-slate-800 dark:bg-slate-900">
       <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
         Prețuri din ultimele {formatDays(windowDays)}, {excludeSales ? 'fără' : 'cu'} reduceri
+        <Chevron />
       </summary>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-3 text-sm">
         <label className="flex items-center gap-2">

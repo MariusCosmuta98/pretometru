@@ -191,7 +191,7 @@ export function ItemEditor({
         </button>
         <button
           type="button"
-          className={`${buttonQuiet} text-red-700 dark:text-red-400`}
+          className={`${buttonQuiet} text-red-700! dark:text-red-400!`}
           onClick={onRemove}
         >
           Șterge articolul
