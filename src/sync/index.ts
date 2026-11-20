@@ -1,6 +1,8 @@
 // Public surface of GitHub sync (React-free): a private repository of the user's own as the backup
 // and the way to share data between devices. Import from '@/sync'. `./testing` (the in-memory
 // GitHub the tests run against) is intentionally not re-exported.
+export { AUTO_SYNC_TUNING, browserEnvironment, startAutoSync } from './auto';
+export type { AutoSync, AutoSyncEnvironment, AutoSyncReason, AutoSyncTuning } from './auto';
 export {
   disconnect,
   lockToken,

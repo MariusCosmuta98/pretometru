@@ -364,6 +364,22 @@ describe('a connected device', () => {
       'GitHub nu acceptă tokenul',
     );
     expect(within(section).getByText(/Ultima sincronizare reușită/)).toBeTruthy();
+    // A revoked token is not fixed by trying again, so the automatic sync waits for a manual one.
+    expect(within(section).getByText(/Sincronizarea automată este oprită/)).toBeTruthy();
+  });
+
+  it('does not call a temporary failure a reason to stop the automatic sync', async () => {
+    await connectDevice();
+    const section = await harness.renderSettings();
+    await within(section).findByText(/Ultima sincronizare reușită/);
+
+    harness.github.setOffline(true);
+    press(section, 'Sincronizează acum');
+
+    expect((await within(section).findByRole('alert')).textContent).toContain(
+      'Nu am putut ajunge la GitHub',
+    );
+    expect(within(section).queryByText(/Sincronizarea automată este oprită/)).toBeNull();
   });
 
   it('explains a branch that keeps moving because other devices sync at the same time', async () => {

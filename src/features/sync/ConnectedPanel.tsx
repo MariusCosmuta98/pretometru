@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react';
 import {
   disconnect,
   getSyncServices,
+  isBlockingCode,
   runSync,
   setAutoSync,
   unlockToken,
@@ -119,6 +120,13 @@ export function ConnectedPanel({ view }: Props) {
 
   const shownFailure: Failure | undefined =
     failure ?? (status && !status.ok && status.error ? status.error : undefined);
+  // Automatic sync does not retry what retrying cannot fix: it waits for a manual sync that works.
+  const paused =
+    connection.auto &&
+    status !== undefined &&
+    !status.ok &&
+    status.error !== undefined &&
+    isBlockingCode(status.error.code);
 
   return (
     <div className="space-y-4">
@@ -152,6 +160,12 @@ export function ConnectedPanel({ view }: Props) {
       </div>
 
       {shownFailure && !runtime.running ? <FailureAlert failure={shownFailure} /> : null}
+      {paused && !runtime.running ? (
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Sincronizarea automată este oprită până când o sincronizare reușește. Rezolvă problema de
+          mai sus și apasă „Sincronizează acum”.
+        </p>
+      ) : null}
 
       {locked ? <UnlockForm /> : null}
 
