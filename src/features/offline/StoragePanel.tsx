@@ -81,8 +81,8 @@ export function StoragePanel() {
 
       <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">
         Stocarea persistentă nu ține loc de o copie de siguranță. Păstrează și o copie în afara
-        browserului: sincronizează datele cu depozitul tău GitHub privat, la „Sincronizare GitHub”
-        din aceste Setări.
+        browserului: exportă datele într-un fișier, la „Copie de siguranță”, sau sincronizează-le cu
+        depozitul tău GitHub privat, la „Sincronizare GitHub”, în aceste Setări.
       </p>
     </div>
   );
