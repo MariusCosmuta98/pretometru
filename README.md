@@ -96,6 +96,68 @@ categorii, magazine, liste și setările comune) într-un fișier `pretometru-AA
 - **Setări → Magazine**: redenumești, unești două magazine care sunt de fapt același (bonurile trec la cel păstrat) și
   ștergi un magazin fără bonuri.
 
+## Citire cu AI — Gemini (opțional)
+
+Pentru pozele greu de citit (de exemplu bonul Mega Image făcut cu telefonul) aplicația poate cere ajutorul lui **Gemini**
+(Google), cu **cheia ta personală**. Este **oprită implicit**, iar poza pleacă de pe dispozitiv doar când apeși
+*Citește cu AI* pe un bon și confirmi. Importul din PDF, din poză (OCR) și din text lipit nu se schimbă și nu trimite nimic.
+
+### Configurare (o singură dată)
+
+1. În [Google AI Studio](https://aistudio.google.com/apikey) creează o cheie API **doar pentru această aplicație**.
+2. În aplicație: **Setări → Gemini (opțional)**. Lipește cheia, apasă *Salvează cheia*, apoi *Testează conexiunea* (cere doar
+   descrierea modelului: nu trimite niciun bon).
+3. Pornește *Pornește citirea cu AI (Gemini)*. De acum, ecranul de verificare al unui bon importat din poză (o ciornă) are
+   butonul *Citește cu AI*.
+4. Apasă-l: o fereastră îți spune exact ce se trimite și cere confirmarea; abia după *Trimite poza la Gemini* pleacă poza.
+   Citirea ia locul celei de pe ecran ca orice altă modificare (nu se salvează până nu salvezi), este verificată din nou
+   (suma liniilor față de total, calculul pe linie, data), iar citirea anterioară rămâne la un buton distanță
+   (*Arată citirea anterioară*).
+
+### Ce e bine să știi
+
+- **Date personale**: pe poza unui bon pot apărea numărul cardului sau al cardului de fidelitate, numele sau adresa ta; pleacă
+  odată cu poza. Poza este micșorată (cel mult 3,5 megapixeli) și refăcută ca JPEG, deci nu pleacă datele ascunse din fișier
+  (locația, ora, aparatul).
+- **Nivelul gratuit** (termenii Gemini API, citiți la 20.11.2026): Google poate folosi poza și răspunsul ca să-și îmbunătățească
+  produsele, iar oameni din echipa Google le pot citi; cu facturare activată nu. În Spațiul Economic European, Elveția și
+  Regatul Unit, termenii spun că se aplică regulile serviciilor plătite, dar și că acolo aplicațiile puse la dispoziția
+  utilizatorilor pot folosi doar servicii plătite. Termenii descriu Gemini API ca instrument pentru dezvoltatori, în scop
+  profesional, nu de consum: cheia și respectarea termenilor sunt responsabilitatea ta. Citește-i: <https://ai.google.dev/gemini-api/terms>.
+- Cheia este păstrată doar în acest browser (IndexedDB), niciodată în exporturi, în backup-uri sau în depozitul de
+  sincronizare, și pleacă doar în antetul `x-goog-api-key`, niciodată într-o adresă. *Șterge cheia* o scoate de pe
+  dispozitiv; dacă pierzi dispozitivul, șterge-o și din Google AI Studio.
+- Aplicația se conectează la `generativelanguage.googleapis.com` doar când apeși *Testează conexiunea* sau *Trimite poza la
+  Gemini*. Cu citirea cu AI oprită nu se face nicio cerere către Google și nici nu se încarcă codul ei.
+- Modelul implicit este `gemini-3.5-flash-lite` (stabil, cu nivel gratuit, verificat la 20.11.2026). Numele modelelor se
+  schimbă: dacă primești „Modelul ales nu există”, schimbă-l din *Setări avansate*. Pentru poze greu de citit poți încerca
+  `gemini-3.6-flash`.
+- Fiecare citire este **o singură cerere**, fără reîncercări automate. Cota gratuită are limite pe minut și pe zi.
+- Un AI poate greși: verifică produsele și sumele cu poza înainte să confirmi. Avertismentele apar ca la orice citire.
+- Detalii tehnice (cererea, validarea răspunsului, erorile): [`docs/architecture.md`](docs/architecture.md) §16.
+
+### Cum verifici manual o citire reală
+
+Testele automate rulează împotriva unui Gemini simulat în memorie (`npm test`, iar `npm run e2e` rulează build-ul de producție
+într-un Chrome real, tot cu Gemini simulat); autorii nu au avut o cheie și nu au apelat serviciul real. Înainte să te bazezi
+pe citirea cu AI, parcurge:
+
+1. **Cheie și test**: *Testează conexiunea* spune „Conexiunea funcționează: modelul … este disponibil”. Cu o cheie greșită:
+   „Google nu acceptă cheia API”.
+2. **Cu funcția oprită**: în DevTools → Network nu apare nicio cerere către `googleapis.com` când deschizi Setările, imporți o
+   poză sau deschizi un bon.
+3. **O poză reală** (de exemplu bonul Mega Image): importă-o, apasă *Citește cu AI* și confirmă. În Network: un singur `POST`
+   la `…/v1beta/models/<model>:generateContent`, fără `key=` în adresă, cu antetul `x-goog-api-key` și un răspuns `200`
+   (fără erori CORS); corpul conține o imagine JPEG de cel mult ~3,5 megapixeli.
+4. **Rezultatul**: compară preț cu preț cu poza. Dacă suma liniilor nu se potrivește cu totalul, apare *Suma nu se
+   potrivește*; *Arată citirea anterioară* aduce înapoi citirea OCR. Încearcă și `gemini-3.6-flash`.
+5. **Cazuri de eroare**: cheie ștearsă la Google („Google nu acceptă cheia API”), un nume de model inventat („Modelul ales nu
+   există”), mod avion („Nu ești conectat la internet”; nu se trimite nimic), cota epuizată (mesajul despre cota zilnică sau
+   despre prea multe cereri), o poză care nu e un bon („Gemini nu a găsit nicio linie de produs”).
+6. **Date**: după *Salvează ciorna*, bonul păstrează liniile de la Gemini. În *Setări → Copie de siguranță* exportă datele și
+   caută în fișier: cheia nu apare nicăieri.
+7. Dacă ceva nu merge, notează mesajul și codul erorii (de exemplu `BAD_KEY`, `RATE_LIMITED`).
+
 ## Rulare locală
 
 Cerințe: Node.js `^22.22`, `^24` sau `>=26` (versiunea folosită în CI este în [`.nvmrc`](.nvmrc)) și npm.

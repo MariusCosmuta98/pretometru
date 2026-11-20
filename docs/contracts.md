@@ -182,6 +182,20 @@ interface ReceiptParser {
   inserted digit is never repaired, and the review shows the line crop.
 - **Kaufland / METRO** (review): `totalBani` is the goods total and `paidBani` ("Plătit") the amount after a voucher; a
   METRO difference of 1 ban between Σ lines and the total is inside the tolerance and raises no warning.
+- **Gemini** (the optional AI reading of a photo, `src/ai`, docs/architecture.md §16; not a store parser): the receipt has
+  `meta.engine: 'gemini'`, `meta.parser` is the **model id** that answered (`gemini-3.5-flash-lite`) and `meta.parserVersion` the
+  version of the prompt and the conversion (`GEMINI_READING_VERSION`); it is stored as `extraction: { engine: 'gemini', parser,
+  version }`. It is read from the picture, so it never passes through a store parser: the chain comes from the model's answer
+  (an unrecognised or missing chain is `unknown`, with `UNKNOWN_CHAIN`). It fills `chain`, `storeName`, `branch` (code and city),
+  `docType`, `documentNo`, `purchasedAt`, `totals.grandTotalBani`, `totals.paidBani` (and `voucherBani` = total - paid when less was
+  paid) and, per line, `rawName`, `kind`, `qty`, `qtyUnit`, `unitPriceBani` (only when printed; a zero is "not printed"),
+  `discountBani`, `lineTotalBani` and `ean`. It never fills `totals.vat`, `vatRate`, `vatClass`, `storeCategoryHint`,
+  `confidence`, `bbox` or `raw`; `pack` is derived from the name with `parsePackSize`, as the OCR parsers do. A discount printed
+  on its own row is a `discount` line with a negative total. Every value is converted exactly or left out: a row without a usable
+  amount is dropped (one `LOW_CONFIDENCE` without `lineIdx` counts them), doubtful rows (name or quantity not read, a bad EAN check
+  digit, a "discount" that adds money, a row the model marked uncertain) get `LOW_CONFIDENCE` with their `lineIdx`, and the
+  arithmetic warnings come from `validateReceipt` like for any engine. An EAN that is a complete GTIN-8, -13 or -14 must have
+  the right check digit.
 
 ## Persisted model (IndexedDB)
 

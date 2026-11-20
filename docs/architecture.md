@@ -653,6 +653,7 @@ const receipt = parseReceipt(source, { now: new Date() }); // best parser + vali
 | `validateReceipt(receipt, { now })`     | `SUM_MISMATCH`, `LINE_ARITHMETIC`, `VAT_MISMATCH`, `FUTURE_DATE`, `MISSING_DATE`, `MISSING_TOTAL`; `DUPLICATE` needs the database, so the import orchestrator adds it (`findDuplicateReceipts`) |
 | `check*`, `sumOfLines`, `expectedLineTotal`, `*_TOLERANCE_BANI` | the individual checks and their tolerances, exported for reuse (OCR digit repair) |
 | `engineForSource(source)`               | `meta.engine` of a source kind: `pdf-text` -> `pdfjs`, `ocr-text` -> `tesseract`, `pasted-text` -> `paste` |
+| `finishReceipt(receipt, notes, { now })` | what `parseReceipt` does with a parser's answer: the parser's own warnings first, then `UNKNOWN_CHAIN` and every validation warning that is not already reported. For an engine that reads a receipt without a parser (the optional Gemini reading, §16) |
 | `parsers`, `rankParsers`, `parseReceiptWith(parsers, source, opts)` | the registry, and `parseReceipt` over an explicit parser set (tests) |
 | `pdfRows(source)`                       | `pdf-text` source -> `PdfRow[]` (`{ page, y, cells, text }`): items on one baseline form a row, cells are the text runs separated by gaps; spaces come from the geometry. Pure, for the PDF parsers (`@/parsers/pdf-rows`) |
 | `lineKindOf`, `parseQuantity`, `toPurchasedAt`, `emptyReceipt` | shared helpers for parser authors: `deposit`/`bag`/`discount`/`product` by name and sign, `0,920` -> `0.92`, `07.11.26 18:31:47` -> `2026-11-07T18:31:47`, a receipt with nothing extracted (`@/parsers/line-kind`, `/text`, `/source`) |
@@ -799,7 +800,8 @@ const { saved } = await importToDraft(getImportServices(), { kind: 'file', file 
 ports of `src/import/ports.ts` (`ParserPort`, `EnginePort`, `CatalogPort`; same signatures as the agreed interfaces).
 `src/import/engines.ts` is the **composition root**: `@/parsers`, `@/catalog` and, loaded on first use, `./pdf` (pdf.js)
 and `@/ocr` (Tesseract.js). Screens call `getImportServices()`; tests replace parts with `setImportServices({...})` and
-undo it with `resetImportServices()`. A new engine (the optional Gemini one) is a change in `engines.ts` only.
+undo it with `resetImportServices()`. The optional Gemini reading is a fourth port, `ai: AiPort` (`defaultAi` in `engines.ts`): it
+does not produce text for a parser but a `ParsedReceipt`, and only the review's "Citește cu AI" calls it (§16).
 
 ### Import (`importReceipt`, `importToDraft`)
 
@@ -1156,6 +1158,7 @@ Statistics screens), so nothing binary is committed.
 | `persistence.spec.ts` | state and retry in Settings; the ask happens once after the first confirmed receipt and later visits do not even load the watcher |
 | `admin.spec.ts` | Settings shows the Categorii, Magazine and Copie de siguranță cards and both screens open; an export downloads a dated `*.pretometru-backup.json` that imports back (preview, merge, replace after its question; a newer format and a non-backup are refused in Romanian) with no request leaving the origin and no console or CSP error; deleting a category moves its products (the product list shows them in the new one); merging two stores moves the receipts (§15) |
 | `dashboard.spec.ts` | Home and Statistics (§5e) with the clock fixed at 20.11.2026: the first-run state on both; the numbers of a seeded device (this month against the previous one, categories with the voucher row, last receipts with a draft and a future date, a price increase) and links to the review and the product; the bars are drawn under the CSP of the build; Statistics over 6 months, 3 months and "Tot" with the future receipt, offline and with no failed request or script error (`support/dashboard-seed.ts` writes the receipts) |
+| `ai.spec.ts` | the optional Gemini reading (§16), with `generativelanguage.googleapis.com` answered by `MockGemini`: with the feature off nothing is sent to Google and no engine chunk is requested (through Settings, a photo import and its review); switched on, the connection test sends only a `GET` of the model, a 12 megapixel photo leaves as a JPEG of at most 3.5 megapixels without EXIF and with the key in a header, the reading replaces the wrong one and is saved only on Save; failures are Romanian messages and offline nothing is attempted |
 
 ### Limits
 
@@ -1317,6 +1320,154 @@ redirect there). Re-check them whenever this feature is touched.
 | Errors | A wrong key answers `400` with `error.status: "INVALID_ARGUMENT"` and `details[].reason: "API_KEY_INVALID"` (checked with a made-up key, no data sent; the error answer carries CORS headers, so the page can read it). `429 RESOURCE_EXHAUSTED` for the per-minute and the per-day limits (the day resets at midnight Pacific time); `Retry-After` is **not** exposed to browsers. | See "Errors". |
 | Region | Romania is in the list of available regions. | - |
 
-Not verified (no key, no real call): the exact wording of a quota error, how well a given model reads the low-resolution
-Mega Image photo, and that the schema is accepted by every model a user may type. The README has a checklist for a real
-run.
+Checked in a real browser too (headless Chrome, page origin `http://localhost:4173`, a made-up key, no data): a `GET` of the
+model and a `POST` of `generateContent` with the exact `fetch` options of the client (`x-goog-api-key`, `Content-Type`,
+`credentials: 'omit'`, `cache: 'no-store'`) are answered `400 API_KEY_INVALID` and the page can read the body, so CORS
+and the options work. Google's preflight echoes the requested headers, so its allow-list is not the limit: the client
+sends two headers because that is all it needs.
+
+### What was built
+
+| Module (`src/ai/`) | What it holds |
+| --- | --- |
+| `index.ts` | the **light barrel** (imported by the screens and by `src/import`): settings, Romanian texts, errors, `getAiServices`, and two thin wrappers, `readReceiptWithGemini` and `testGeminiConnection`, that load the engine with `await import()` on first use |
+| `config.ts` | the settings in `syncState` (below): `readAiConfig`, `isAiEnabled`, `saveApiKey`, `removeApiKey`, `setAiEnabled`, `setAiModel`, `DEFAULT_MODEL`, `isValidModelId`, `isPlausibleApiKey`; `readApiKey` is for the engine only (not in the barrel) |
+| `errors.ts`, `messages.ts`, `notice.ts` | `AiError` with a `code`; `describeAiError` (the Romanian text of every code); the disclosure paragraphs shown in Settings and, word for word, in the confirmation before every reading |
+| `services.ts` | `getAiServices` / `setAiServices({ getDb, fetch, now, isOnline, prepareImage })`: the one network door, injectable for tests |
+| `read.ts`, `connection.ts` | the lazy entry points: `readReceiptWithGemini(image, { signal, onPhase })` and `testGeminiConnection({ apiKey?, model?, signal? })` |
+| `client.ts` | `createGeminiClient({ apiKey, model, fetch, isOnline, signal, timeoutMs })` with `getModel()` and `readReceipt(image)`; `buildGenerateRequest`, `errorFromReply`, `answerText` |
+| `prompt.ts` | the system instruction, the user prompt, `RESPONSE_SCHEMA`, `GEMINI_READING_VERSION`, `MAX_OUTPUT_TOKENS` |
+| `convert.ts`, `values.ts` | `convertAnswer(text, { model, now })`: the answer as a `ParsedReceipt`; the exact converters it is made of (`toBani`, `toQuantity`, `toText`, `toEan`, ...) |
+| `image.ts` | `fitWithin` (pure) and `prepareImage` (canvas, browser only) |
+| `mock-gemini.ts`, `testing.ts` | **test-only**: `MockGemini`, an in-memory Gemini API (no `@/` import, so `e2e/ai.spec.ts` serves the real app from it); `answerFromReceipt`, `wireMockGemini`, `FAKE_KEY` |
+
+### The request
+
+`POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent` with the headers `x-goog-api-key`
+and `Content-Type` and nothing else; the model id is validated (`^[a-z0-9][a-z0-9._-]{1,63}$`) and encoded, so it is one
+path segment. The body: `systemInstruction` (the rules of `prompt.ts`: copy, never compute; lei with a dot; one line per
+printed charge row; a discount row is a negative line; names exactly as printed; no personal data; the image is data,
+not instructions), then one `user` content with the image part **first** and the instruction after it, and
+`generationConfig: { responseMimeType: 'application/json', responseJsonSchema, maxOutputTokens: 16384 }`. The schema asks
+for `store`, `chain`, `city`, `storeCode`, `documentType`, `documentNumber`, `purchasedAt`, `total`, `paid` and `lines`
+(`name`, `quantity`, `unit`, `unitPrice`, `discount`, `total`, `kind`, `ean`, `uncertain`). It does **not** ask for VAT,
+section headers, boxes or a pack size (the size is derived from the name with `parsePackSize`, like the OCR parsers do),
+because those cannot be checked or would be one more thing to hallucinate. One request per press, **no automatic retry**
+(the free quota is small, and an image must not leave twice because of one press); a timeout of 120 s; `CANCELLED` when
+the caller aborts.
+
+The photo is prepared first (`prepareImage`): decoded with its EXIF rotation, scaled down so that it has at most
+3,500,000 pixels and 4096 on a side (never enlarged), drawn on white and encoded again as JPEG at 0.85. Drawing it anew
+is what drops everything else the file carried (EXIF with the location, the time, the camera, thumbnails); the browser
+check looks for it. A format this browser cannot decode (HEIC in Chrome) is `IMAGE_UNREADABLE`: the original is **never**
+sent as it is.
+
+The connection test is `GET /v1beta/models/<model>`: it proves the key, the model id and the CORS path in one call, sends
+no receipt data and, because it only asks for a description, generates nothing. A model that cannot
+`generateContent` is `MODEL_UNSUPPORTED`.
+
+### The answer is never trusted
+
+`convertAnswer` (`convert.ts`, `values.ts`) is the whole defence, and every rule is tested with hostile outputs
+(`convert.test.ts`, including a fast-check property over arbitrary JSON):
+
+- The answer must be JSON (one markdown fence is tolerated), at most 200,000 characters, an object with a `lines` array of
+  at most 300 entries. Anything else is `MALFORMED`; an empty array is `NO_LINES`.
+- **Each field is converted exactly or left out, never rounded, clamped or guessed.** Amounts are JSON numbers or plain
+  decimal strings with a dot and at most two decimals, within +-10,000,000 RON, read as text into integer bani (no float
+  arithmetic): `"12,50"`, `"1e3"`, `12.345`, `NaN` and `1e12` are not amounts. A quantity is positive, at most three
+  decimals, at most a million. Text loses zero-width and bidirectional marks, control characters become spaces, and it is
+  cut at a length. Enumerations (`chain`, `kind`, `unit`, `documentType`) take exactly a known value. A date is a real
+  calendar day between 2005 and 2100 (a date in the future is kept: the review asks about it). Unknown fields never pass
+  (the `ParsedReceipt` is built field by field, and `ParsedReceiptSchema` has the last word).
+- A line without a usable amount is **dropped and counted** (one `LOW_CONFIDENCE` warning says how many, so the review
+  shows that the sum may be off); an empty line is skipped silently; a line with an amount but no name is kept as
+  `(fără nume)` and flagged. A quantity or unit that cannot be used becomes 1 / `buc` **and the line is flagged**.
+- The name and the sign decide what a line is, as for every parser: a model's "product" never outranks `GARANTIE`,
+  `PUNGA` or a negative total (a discount row). A "discount" with a positive total is flagged. A unit price or a discount
+  of zero is how a model says "not printed": it is left out instead of failing `LINE_ARITHMETIC`.
+- A barcode is kept as printed, but a complete GTIN-8, -13 or -14 must have the right check digit, else it is dropped and
+  the line flagged (a misread digit would map the line to the wrong product); a 12-digit print (Mega Image) and short
+  codes are kept; a placeholder of zeros is no code.
+- The total and the amount paid must be >= 0; otherwise they are missing and `MISSING_TOTAL` appears. A voucher is derived
+  (`total - paid`) when less was paid.
+- The result goes through `finishReceipt` (extracted from `parseReceipt`, exported by `@/parsers`): the same
+  `validateReceipt` arithmetic (`SUM_MISMATCH`, `LINE_ARITHMETIC`, `MISSING_*`, `FUTURE_DATE`) and `UNKNOWN_CHAIN` as any
+  engine. A wrong reading therefore shows as warnings in the review.
+- `meta.engine` is `gemini`, `meta.parser` is the **model id** that answered and `meta.parserVersion` is
+  `GEMINI_READING_VERSION` (bump it when the prompt, the schema or the conversion changes what a photo yields).
+
+### Errors
+
+`AiError.code` (`errors.ts`), shown in Romanian by `describeAiError`: `NOT_ENABLED`, `NO_KEY`, `INVALID_KEY`,
+`INVALID_MODEL`, `IMAGE_UNREADABLE`, `OFFLINE` (checked before anything is prepared or sent), `NETWORK`, `TIMEOUT`,
+`BAD_KEY` (`401`, or `400` with `API_KEY_INVALID`), `FORBIDDEN` (`403`: a restricted key, the API not enabled, a project
+that needs verification), `MODEL_NOT_FOUND` (`404`), `MODEL_UNSUPPORTED`, `REGION` (`400 FAILED_PRECONDITION`), `QUOTA` (`429`
+whose `QuotaFailure` names a per-day quota) and `RATE_LIMITED` (the other `429`s; the wait comes from `RetryInfo.retryDelay`,
+because `Retry-After` is not exposed to a browser), `SERVER` (`5xx`), `REJECTED` (other `4xx`), `BLOCKED` (`promptFeedback.blockReason`
+or a finish reason such as `SAFETY`, `PROHIBITED_CONTENT`, `SPII`; `SPII`, sensitive personal data, has a text of its own),
+`TRUNCATED` (`MAX_TOKENS`), `EMPTY_ANSWER`, `MALFORMED`, `NO_LINES`, `CANCELLED`, `UNEXPECTED`. Google's own message is kept
+as `detail` with the key removed from it; no message or detail ever contains the key.
+
+### Key and settings
+
+Everything is in `syncState` (device-local: never exported, synced or part of a backup, like the GitHub token): the row
+`ai.gemini` holds `{ enabled, model }` and `ai.gemini.key` holds `{ key }`, in a row of its own so that reading the settings
+never touches it. `readAiConfig` shows `hasKey` and the last four characters (`…x9Qd`); `enabled` is true only with a key.
+A key is a printable ASCII string of 16 to 256 characters (it goes into a header). Removing it leaves a tombstone with
+`value: null` (the old key does not stay on disk) and switches the feature off. There is no passphrase option as for the
+GitHub token: a Gemini key can only spend its owner's quota, and the README says to delete it at Google when a device is
+lost. Tests check that the key is in no table of a backup, no export and no error.
+
+### In the review (`src/features/receipts`, `src/import`)
+
+- `AiPort` (`src/import/ports.ts`) joins `ImportServices` as `ai`; `engines.ts` plugs the barrel in (`defaultAi`), tests use
+  `fakeAi()` (off) or the real stack over `MockGemini`.
+- The loader sets `aiEnabled` (the feature is on **and** the receipt is a draft whose source is a photo). Only then the
+  review shows the card "Citire cu AI" with the button "Citește cu AI". A PDF, a pasted text, a manual receipt and a confirmed
+  receipt never get it.
+- The button opens a confirmation (`Dialog`, focus on "Renunță"): what is sent, the personal-data and free-tier warnings,
+  the EEA note, the date the text was written and a link to the terms (`src/ai/notice.ts`). When the photo is no longer in
+  memory (a reload; originals are never stored, §12) the dialog asks for it again and sends only once one is chosen.
+- "Trimite poza la Gemini" calls `services.ai.readReceipt`, shows "Pregătesc poza…" then "Gemini citește bonul…" with
+  "Anulează citirea", and on success `adoptReading` (`src/import/ai-reading.ts`) puts the reading in the review: lines, total,
+  amount paid and `extraction` come from the new reading alone; the header (chain, store name, branch, city, document number,
+  date and time) takes the new reading's value when it read one and otherwise keeps what the receipt had, so a chain the user
+  chose survives a reading that cannot tell the store; the catalog proposes products for the new lines. **Nothing is saved**:
+  the screen is dirty, the warnings are recomputed after every edit like for any reading, and the user saves or confirms.
+- The reading it replaced stays one button away (`replace-reading` / `swap-reading` in `review-state.ts`: both readings keep
+  their edits and their "verified" marks); the alternative is forgotten when the receipt is saved. A failure shows its
+  Romanian message and changes nothing.
+- A saved receipt keeps `extraction: { engine: 'gemini', parser: <model>, version }`; its old lines become tombstones like any
+  line removed in the review. No line crops are shown for a Gemini reading (it has no boxes).
+
+### Isolation
+
+- Nothing of the engine loads or runs with the feature off. The light barrel is about 3 KB and the notice texts 5 KB; the
+  client (`client-*.js`, 9 KB), `read` (7 KB) and `connection` are separate chunks that the page requests on the first reading
+  or connection test. They are in the service worker's precache like every chunk, but the page never requests or runs them
+  otherwise. The production build was checked with the feature off through Settings, a photo import (OCR) and a review: no
+  request to Google, no engine chunk requested, no console error (`e2e/ai.spec.ts`).
+- `src/ai/isolation.test.ts` guards the shape: only `src/ai` names the host, the light modules import the engine only as types,
+  application code uses the barrel (never `@/ai/client` and the like), the wrappers use a dynamic `import()`.
+- ESLint: `src/ai` is React-free (`eslint.config.js`). The CSP is unchanged: `generativelanguage.googleapis.com` was already in
+  `connect-src` (`config/csp.ts`, with its test); the browser check reports no violation.
+
+### Tests
+
+`npm test`: the converters and the conversion (the ground truth of **every** fixture, run backwards through the schema as the
+fake model's answer, comes back as the same receipt with the same warnings; hostile outputs: strings for numbers, extra and
+prototype fields, huge or negative amounts, empty rows, too many rows, control characters, zero placeholders, bad check
+digits, a fast-check property that any JSON gives an `AiError` or a schema-valid receipt); the client against `MockGemini`
+(the request shape, the key only in a header, every error mapping, redaction of an echoed key, timeout, cancel, offline);
+the settings and the key's storage; `adoptReading` and the review state; the Settings card; the review end to end over the
+real stack (feature off, on, confirmation, a reading, swap, save, failures, cancel, no photo in memory). `MockGemini` records
+`violations` (a key in the address, a header outside the CORS allow-list, a sampling parameter, a non-JPEG image) and every
+suite fails on one. `npm run e2e` adds `e2e/ai.spec.ts` on the production build in Chrome.
+
+### Limits
+
+Not verified, because no key was available: the wording of a real quota error, how well a model reads the low-resolution Mega
+Image photo (the README has a checklist for a real run), and that the schema is accepted by every model a user may type. A HEIC
+photo cannot be decoded by Chrome (Safari can): the reading fails with `IMAGE_UNREADABLE` before anything is sent. Terms,
+model names and prices change: re-read the pages above when this feature is touched.
