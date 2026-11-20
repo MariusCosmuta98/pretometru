@@ -92,7 +92,97 @@ export function Component() {
 - New icons go in `src/ui/icons.tsx` (`IconName` union + one glyph).
 - UI strings are Romanian; identifiers, comments and commit messages are English.
 
-## 4. Build, PWA and CSP
+## 4. Domain layer (`src/domain`, import from `@/domain`)
+
+Pure TypeScript plus `zod`; the zod schemas are the executable source of truth for [`contracts.md`](contracts.md).
+Change a contract by editing the schema, `contracts.md` and the affected fixtures in the same commit.
+
+| Module              | What it gives you                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `parsed-receipt`    | `ParsedReceiptSchema`, `ParsedLineSchema`, `ParseWarning`, `Chain`, `DocType`, `LineKind`, `WarningCode` (+ `CHAINS`, ...) |
+| `receipt-source`    | `ReceiptSourceSchema` (`pdf-text`, `ocr-text`, `pasted-text`), `PdfTextItem`, `OcrLine`, the `ReceiptParser` interface |
+| `entities`          | persisted record schemas and types (`Store`, `Receipt`, `Line`, `Product`, `Alias`, `Category`, `List`, `ListItem`, `KeyValue`) and `SYNCED_ENTITY_SCHEMAS` |
+| `money`             | `parseBani` (`"1.234,56"`, `"2,49-"`), `formatBani`/`formatLei`, `mulDiv`/`roundDiv` (exact, half away from zero), `sumBani`, `netFromGross`/`grossFromNet`/`vatFromGross`, `formatMilliBani` |
+| `units`             | `QtyUnit`/`PackUnit`/`BaseUnit`, `parsePackSize("... 8G*4")` (flags `ambiguous` for a spaced `8G * 4`), `baseUnitOf`, `toMilliBase` |
+| `pricing`           | `unitPricing({ lineTotalBani, qty, qtyUnit, pack })` -> `paidUnitBani`, `baseUnit`, `pricePerBaseMilliBani`      |
+| `names`             | `normalizeName` (the stable alias key: no diacritics, `1 L` -> `1l`)                                         |
+| `dates`             | `isValidPurchasedAt`, `parsePurchasedAt`, `todayKey(now)`, `shiftDateKey`, `isFutureDate(purchasedAt, now)`   |
+| `ids`               | ULIDs: `newId()`, `createIdGenerator`, `IdSchema`, `idTimestamp`                                              |
+| `seed`              | `SEED_CATEGORIES`, `NON_PRODUCT_CATEGORY_ID`                                                                 |
+| `settings`          | `SETTING_DEFINITIONS` (schema, default, `portable`), `isPortableSetting`                                       |
+| `backup`            | `BackupSchema`, `createBackup`, `serializeBackup`, `parseBackup` (text; never throws, returns `errors`/`warnings`), `validateBackup` (object) |
+| `common`            | `BaniSchema`, `QtySchema`, `InstantSchema`, `EanSchema`, ...                                                  |
+| `testing`           | **test-only** builders `makeStore()`, `makeReceipt()`, `makeLine()`, ... (valid, deterministic ids and dates); not re-exported |
+
+Rules of thumb:
+
+- **Money is integer bani**, always. Use `mulDiv`/`roundDiv` for division, never `/` and `Math.round`.
+- **Never throw from parsers**: use `parseBani`, `parsePackSize`, `parsePurchasedAt` (they return `undefined`); the
+  `format*`/`mulDiv`/`unitPricing` helpers throw `RangeError` on programming errors (non-integers, `qty <= 0`).
+- **Inject the clock** (`isFutureDate(date, now)`); the Lidl sample is dated in the future.
+- Add a **new setting** to `SETTING_DEFINITIONS` (no migration needed). It is exported/synced only with `portable: true`;
+  leave it `false` for secrets and device-specific values.
+
+## 5. Storage layer (`src/storage`, import from `@/storage`)
+
+Dexie/IndexedDB with the whole plan §6 model defined up front (ten tables, see [`contracts.md`](contracts.md)). Records
+have `id` (ULID), `updatedAt` and `deletedAt`; `settings` and `syncState` are key-value tables.
+
+```ts
+import { getDb, saveReceipt, findDuplicateReceipts, listActive, createRecord } from '@/storage';
+
+const db = await getDb(); // opens once, runs migrations, seeds the categories
+const duplicates = await findDuplicateReceipts(db, { fileHash, storeId, purchasedAt, totalBani });
+const { receipt, lines } = await saveReceipt(db, receiptInput, lineInputs); // transactional, derives unit prices
+const products = await listActive(db.products);
+```
+
+| Function                                                      | Purpose                                                                                  |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `getDb()` / `openDb(options)`                                 | the shared database / open one (migrations + `ensureSeed`)                                |
+| `createRecord`, `updateRecord`, `softDelete`, `getActive`, `listActive`, `purgeTombstones` | generic CRUD for the synced tables: ids, `updatedAt`, zod validation and tombstones are handled |
+| `saveReceipt(db, receipt, lines)`                             | create or edit a receipt and replace its lines in one transaction; computes `paidUnitBani`, `baseUnit`, `pricePerBaseMilliBani`; non-product lines default to the Non-produs category |
+| `getReceiptWithLines`, `deleteReceipt`                        | live receipt with its lines in printed order / tombstone both together                    |
+| `findDuplicateReceipts(db, candidate)`                        | same file hash, or same store + day + total (+ receipt number): feeds the `DUPLICATE` warning |
+| `getSetting`/`setSetting`                                     | typed settings with defaults (`SETTING_DEFINITIONS`)                                      |
+| `getKeyValue`/`setKeyValue`/`deleteKeyValue`                  | free-form JSON values in `db.settings` or `db.syncState` (the sync session keeps its token and cursor in `syncState`); deleting leaves a tombstone with `value: null`, so a deleted token does not stay on disk |
+| `exportBackup(db)` / `importBackup(db, backup, { mode })`     | `exportBackup` returns `{ backup, skipped }` (valid records only; `skipped` lists rows that no longer satisfy their schema); `importBackup` validates its argument, then `merge` is last-write-wins by `updatedAt` and `replace` swaps the data |
+| `reconcileReceiptLines(db, receiptIds)`                       | tombstones live lines older than the receipt's `linesUpdatedAt` (called by `importBackup`; sync must call it after merging records) |
+
+Conventions every session must follow:
+
+1. **Write through these helpers**, not with raw `db.table.put/add/delete`: they stamp `updatedAt`, validate with the
+   zod schema and leave tombstones. A raw write that forgets `updatedAt` silently breaks sync and merge imports.
+2. **Never hard-delete** synced records (`softDelete`); read with `listActive`/`getActive` so tombstones stay hidden.
+3. **Derived line fields come only from the helpers.** `saveReceipt` creates and replaces lines and derives their
+   prices; `updateRecord(db.lines, ...)` re-derives them when a total, quantity or pack changes (this is what
+   `alias.defaultPack` uses); `createRecord(db.lines, ...)` is refused.
+4. **Merging record by record is not enough for lines.** Two devices can re-save the same receipt with different line
+   sets; `saveReceipt` stamps `receipt.linesUpdatedAt`, and `reconcileReceiptLines` tombstones lines older than it.
+   Any code that merges records from another source (sync) must call it for the receipts it touched.
+5. A synced table must also appear in `SYNCED_ENTITY_SCHEMAS` (backups carry it); a test fails otherwise.
+6. Secrets (GitHub token, Gemini key) go in `syncState` or in a non-portable setting, never in a synced table.
+
+**Adding an index or transforming data**: append a `Migration` to `MIGRATIONS` in `src/storage/migrations.ts`; never edit a
+released one. List only the tables that change; `upgrade` runs once for databases below that version:
+
+```ts
+{
+  version: 2,
+  stores: { products: 'id, categoryId, ean, name, brand, deletedAt, updatedAt' }, // full index string of that table
+  upgrade: (tx) => tx.table('products').toCollection().modify((p) => { p.brand ??= undefined; }),
+}
+```
+
+Adding a **non-indexed field** needs no migration; add it as an optional field in the zod schema and in `contracts.md`.
+Dexie returns records unvalidated, so treat optional fields defensively. When another tab upgrades the schema, Dexie
+closes this tab's connection and reopens it on the next query (`getDb()` keeps returning the same instance).
+
+**Tests** use an in-memory IndexedDB: `const db = await createTestDb()` from `src/storage/testing.ts` returns an empty,
+unseeded database (call `ensureSeed(db)` if the test needs the categories); `makeReceipt()`, `makeLine()`, ... come from
+`src/domain/testing.ts`. Both modules are test-only and are not re-exported from the barrels.
+
+## 6. Build, PWA and CSP
 
 - `vite.config.ts`: base `/pretometru/` (override with `BASE_PATH` if the repo is renamed). The `test` mode skips the
   PWA, CSP and Tailwind plugins.
@@ -109,7 +199,7 @@ export function Component() {
   in `public/`. Regenerate by rendering each SVG at 512 px with headless Chrome
   (`--headless=new --screenshot --window-size=512,512`) and downscaling with `sips -z 192 192` / `sips -z 180 180`.
 
-## 5. Testing conventions
+## 7. Testing conventions
 
 - Vitest, **colocated** `*.test.ts(x)` next to the code; cross-cutting tests and fixtures under `tests/`.
 - Default environment is `node`. DOM tests start with `// @vitest-environment jsdom` and call `cleanup` in
@@ -117,7 +207,7 @@ export function Component() {
 - Anything time-dependent takes an injectable `now` (the Lidl sample is dated in the future).
 - Run one file: `npx vitest run src/app/registry.test.ts`.
 
-## 6. Commands
+## 8. Commands
 
 | Command                                            | What it does                                          |
 | -------------------------------------------------- | ----------------------------------------------------- |
@@ -132,7 +222,7 @@ export function Component() {
 Git flow (trunk-based): branch, `git fetch && git rebase origin/main`, `npm run check`, `git push origin HEAD:main`.
 CI (`.github/workflows/ci.yml`) runs the same four steps and, on `main`, deploys `dist/` to GitHub Pages.
 
-## 7. Dependency notes
+## 9. Dependency notes
 
 - TypeScript is pinned to `~6.0` because `typescript-eslint` supports `<6.1`; move to TS 7 when it does.
 - `overrides.workbox-build.glob` pins a patched `glob` (advisory in `workbox-build`'s dependency). Remove it when

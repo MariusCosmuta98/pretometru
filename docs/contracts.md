@@ -14,6 +14,17 @@ schemas and every affected `tests/fixtures/**/expected.json` in the same commit.
   including `raw`. Branch info is limited to store code and city.
 - **Parsers are pure**: no DOM, no IndexedDB, no network, deterministic, runnable under Node (Vitest).
   They never throw on malformed input; they return a best-effort receipt plus `warnings`.
+- **Schema strictness**: the zod schemas reject unknown keys (a typo must not pass silently) and bound every amount to
+  ±10,000,000 RON (1,000,000,000 bani) to catch runaway parses. Text fields that exist must be non-empty (`rawName`,
+  `storeName`, `documentNo`, `parser`, `storeCategoryHint`, `branch.code`, `branch.city`) and `rawName` must be trimmed.
+  `ean` is 4 to 14 digits, `vatClass` is 1 to 3 characters `A-Z0-9`, `unitPriceBani` and `discountBani` are >= 0,
+  `qty` and `pack.qty` are > 0 and <= 1,000,000 with at most 3 decimals, `lines[].idx` is strictly increasing,
+  `bbox.w`/`bbox.h` are >= 0, source `pages[].width`/`height` are > 0, `confidence` is 0..1 (OCR sources: 0-100), and a
+  warning's `lineIdx` must point at an existing line. A `purchasedAt` in the future is **valid** (it earns a
+  `FUTURE_DATE` warning, not a schema error); date checks take an injectable `now`.
+- **`lineTotalBani` is net of the line's discount**, so sum(`lineTotalBani`) = `grandTotalBani` holds whether a
+  discount is folded into its product line (`discountBani` > 0) or printed as a standalone `discount` line. Plan §7.2's
+  `(lineTotal - discount) / qty` therefore reads `lineTotalBani / qty`; `discountBani` only tells regular prices from sale prices.
 
 ## ParsedReceipt (parser output, review-UI input, pre-persistence)
 
@@ -100,6 +111,9 @@ interface ReceiptParser {
 }
 ```
 
+`OcrLine.confidence` and the `ocr-text` `confidence` use Tesseract's **0-100** scale; parsers normalise to **0..1** in
+`ParsedLine.confidence` and `meta.confidence`.
+
 ## Per-store notes (verified on real samples)
 
 - **Kaufland** (PDF with text): section headers (`Alimente`, `Mopro/Brânză/Ouă`, …) -> `storeCategoryHint`;
@@ -113,3 +127,49 @@ interface ReceiptParser {
   split card payments (several `CARD` lines). OCR confuses 0/8 and similar; arithmetic checks catch it.
 - **Mega Image** (photo, OCR): `name price` then the EAN on the next line; no store name on the receipt
   (only a merchant code on the card slip); EAN may be truncated; watermark/low resolution -> expect review.
+
+## Persisted model (IndexedDB)
+
+Defined by the zod schemas in `src/domain/entities.ts` and by `src/storage/` (Dexie tables, indexes, migrations); plan §6
+is the product-level description. English enum values replace the Romanian ones of the plan (`receipt`/`invoice`,
+`product`/`deposit`/`bag`/`discount`/`fee`, base unit `role`).
+
+Every synced record has `id` (ULID), `updatedAt` (UTC instant with exactly 3 ms digits, as `Date.toISOString()` writes it,
+because last-write-wins compares the strings) and an optional
+`deletedAt` (tombstone: records are soft-deleted so deletions can sync; only `purgeTombstones` and a `replace` import
+remove rows; a deleted key-value row also drops its value so a deleted token does not stay on disk). `settings` and
+`syncState` are key-value rows `{ key, value (any JSON), updatedAt, deletedAt? }`.
+
+| Table                | Fields beyond the sync fields                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `stores`             | `chain`, `name`, `branchCode?`, `city?`, `address?`                                                              |
+| `receipts`           | `storeId`, `purchasedAt?` (required once `confirmed`), `receiptNo?`, `docType`, `totalBani`, `paidBani?`, `linesUpdatedAt?` (when the line set was last replaced; older live lines are tombstoned on merge), `source` `{kind: pdf\|image\|text\|manual, fileHash? (sha-256 hex), fileName?, rawText? (PII-free, for re-processing)}`, `extraction` `{engine, parser, version, confidence?, warnings[]}`, `status` (`draft`\|`confirmed`) |
+| `lines`              | `receiptId`, `idx`, `rawName`, `ean?`, `qty`, `unit`, `lineTotalBani`, `discountBani` (>= 0, already inside the total), `vatRate?`, `kind`, `storeCategoryHint?`, `productId?`, `categoryId?`, `packQty?` + `packUnit?` (together: content of ONE sold unit), `unitsPerPack?`; derived: `paidUnitBani`, `baseUnit`, `pricePerBaseMilliBani` |
+| `products`           | `name`, `brand?`, `categoryId`, `ean?`, `baseUnit` (`kg`, `l`, `buc`, `role`, `m`)                               |
+| `aliases`            | `chain?` (absent = every chain), `normName` (`normalizeName(rawName)`), `rawName?`, `ean?`, `productId`, `defaultPack?` `{qty, unit, unitsPerPack?}` |
+| `categories`         | `name`, `parentId?`, `color` (`#rrggbb`), `icon` (emoji), `order`, `system?`                                     |
+| `lists` / `listItems` | list: `name`, `archivedAt?`; item: `listId`, `productId?`, `label`, `qty?`, `unit?`, `note?`, `checked`, `checkedAt?`, `order` |
+
+Derived line fields are computed only by `unitPricing()` (through `saveReceipt`), never written by hand:
+`paidUnitBani = round(lineTotalBani / qty)` and `pricePerBaseMilliBani` is the price per `baseUnit` in **milli-bani**
+(1/1000 ban). `baseUnit` is `kg`/`l` for weighed items, otherwise the base of `packUnit`, or `buc` when the size is
+unknown; compare prices only between lines that have the same `baseUnit`.
+
+**Deviations from plan §6**
+
+- `pricePerBaseBani` is stored as `pricePerBaseMilliBani` (integer milli-bani). Whole bani lose too much precision for
+  cheap pieces (120 wet wipes at 3,98 lei are 3,317 bani each) and ties would corrupt "cheapest" rankings.
+- Additions: `lines.baseUnit` (needed to interpret the price), `aliases.rawName`, `receipts.source.rawText` (plan risk 4:
+  keep text for re-processing), `categories.system`, `lists.archivedAt` and the list item fields.
+- No `createdAt`: the creation time is inside the ULID (`idTimestamp`).
+- Seed categories have well-known ids (`0000000000SEEDCATEG0000001` to `...16`) and `updatedAt` = epoch, so devices that
+  seed independently converge and any user edit wins.
+
+**Backup file (`*.pretometru-backup.json`)**:
+`{ format: 'pretometru-backup', formatVersion: 1, exportedAt, data: { stores, receipts, lines, products, aliases,
+categories, lists, listItems, settings } }`. Tombstones are included. Sync state and settings that are not marked
+`portable` in `SETTING_DEFINITIONS` (tokens, API keys, device values) are never exported or imported. Import is `merge`
+(the newer `updatedAt` wins per record, a newer tombstone deletes) or `replace`, in one transaction, and afterwards
+reconciles the lines of every touched receipt (`linesUpdatedAt`), because two devices can re-save the same receipt
+with different line sets. A newer `formatVersion` is refused rather than imported lossily. Export leaves out (and
+reports as `skipped`) stored records that no longer satisfy their schema instead of failing.
