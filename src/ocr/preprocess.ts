@@ -5,7 +5,10 @@
  *
  * Plan §3: preprocessing (a single channel + threshold + 3x upscale) raised the OCR confidence of
  * the low-resolution Mega Image photo from 21 to 67. Every step is tunable through
- * `PreprocessOptions`; the defaults were chosen with `npm run ocr:bench` on the real samples.
+ * `PreprocessOptions`. The defaults come from `npm run ocr:bench -- --sweep` on the real samples:
+ * with 4x both receipts' prices and totals read right, 3x lost the Mega Image total and 2x
+ * misread prices on both. A single pass is still sensitive to the exact scale, so a caller that
+ * finds the result inconsistent can run a second pass with another `scale`.
  */
 
 /** 4 bytes per pixel (R, G, B, A), the layout of canvas `ImageData`. */
@@ -45,7 +48,7 @@ export interface PreprocessOptions {
 
 export const DEFAULT_PREPROCESS: PreprocessOptions = {
   channel: 'auto',
-  scale: 3,
+  scale: 4,
   maxPixels: 12_000_000,
   stretch: true,
   threshold: 'otsu',
