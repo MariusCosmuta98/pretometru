@@ -31,9 +31,10 @@ const warningKey = (warning: ParseWarning) => `${warning.code}:${warning.lineIdx
 
 /**
  * Parser warnings come first. A validation warning is dropped when the parser already reported
- * the same code for the same line (or for the document), so nothing shows up twice.
+ * the same code for the same line (or for the document), so nothing shows up twice. Also what an
+ * engine that reads a receipt without a parser (the optional Gemini reading) does with its answer.
  */
-function finish(
+export function finishReceipt(
   receipt: ParsedReceipt,
   notes: readonly ParseWarning[],
   opts: ParseReceiptOptions,
@@ -62,13 +63,13 @@ export function parseReceiptWith(
   const notes: ParseWarning[] = [];
   for (const { parser } of rankParsers(source, candidates)) {
     const result = attempt(parser, source);
-    if (result.ok) return finish(result.receipt, notes, opts);
+    if (result.ok) return finishReceipt(result.receipt, notes, opts);
     notes.push({
       code: 'LOW_CONFIDENCE',
       message: `Parserul „${parser.id}” a eșuat: ${result.reason}`,
     });
   }
-  return finish(emptyReceipt(source, NO_PARSER), notes, opts);
+  return finishReceipt(emptyReceipt(source, NO_PARSER), notes, opts);
 }
 
 /**
