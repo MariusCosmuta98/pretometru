@@ -52,6 +52,8 @@ async function renderSection(): Promise<PretometruDB> {
 async function open() {
   render(<BackupSection />);
   await screen.findByRole('button', { name: 'Exportă datele' });
+  // What the device holds is read a moment later: wait for it, as a person would.
+  await screen.findByText(/Nu ai exportat încă o copie|Ultima exportare:/);
 }
 
 const backupFile = (text: string, name = 'copie.pretometru-backup.json') =>

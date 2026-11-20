@@ -163,6 +163,8 @@ export function PreviewCard({
           title="Înlocuiești datele de pe acest dispozitiv?"
           confirmLabel="Înlocuiește datele"
           busy={busy}
+          // The question says what would be lost: wait until that is known (a moment at most).
+          canConfirm={device.status !== 'loading'}
           onConfirm={() => {
             onImport('replace');
           }}
