@@ -182,7 +182,8 @@ describe('import', () => {
 
     fireEvent.click(within(card).getByRole('button', { name: 'Importă datele' }));
 
-    expect(await screen.findByRole('heading', { name: 'Import terminat' })).toBeTruthy();
+    const result = await screen.findByRole('heading', { name: 'Import terminat' });
+    await waitFor(() => expect(document.activeElement).toBe(result));
     expect(screen.getByText(/Date importate: \d+ (de )?înregistrări noi/)).toBeTruthy();
     expect(await db.receipts.count()).toBe(1);
     expect((await db.stores.toArray()).map((s) => s.name).sort()).toEqual([
@@ -190,6 +191,13 @@ describe('import', () => {
       'METRO',
     ]);
     expect((await db.stores.get(own.id))?.name).toBe('METRO');
+
+    // "Gata" closes the result and puts focus back on the file field.
+    fireEvent.click(screen.getByRole('button', { name: 'Gata' }));
+    expect(screen.queryByRole('heading', { name: 'Import terminat' })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText('Fișier de copie de siguranță')),
+    );
   });
 
   it('asks for a clear confirmation before replacing, and replaces only after it', async () => {

@@ -1,17 +1,12 @@
 import { useId, useRef, useState } from 'react';
 import { applyBackup, readBackupFile, type BackupPreview, type ImportSummary } from '@/admin';
 import type { ImportMode, PretometruDB } from '@/storage';
-import { buttonSecondary, card, inputClass, labelClass, noticeClass } from '@/ui/controls';
+import { inputClass, labelClass, noticeClass } from '@/ui/controls';
 import type { Live } from '@/ui/live';
 import type { DeviceSummary } from './ExportPanel';
+import { refusalMessage, type Message } from './messages';
 import { PreviewCard } from './PreviewCard';
-import {
-  ignoredSettingsText,
-  refusalMessage,
-  resultText,
-  TABLE_NAMES,
-  type Message,
-} from './messages';
+import { ResultCard } from './ResultCard';
 import type { Exporter } from './useExporter';
 
 type State =
@@ -54,7 +49,6 @@ export function ImportPanel({
   const inputId = useId();
   const helpId = useId();
   const input = useRef<HTMLInputElement>(null);
-  const resultHeading = useRef<HTMLHeadingElement>(null);
 
   async function choose(file: File) {
     setState({ step: 'reading', name: file.name });
@@ -79,7 +73,6 @@ export function ImportPanel({
     try {
       const summary = await applyBackup(db, preview.backup, mode);
       setState({ step: 'done', name, summary });
-      queueMicrotask(() => resultHeading.current?.focus());
     } catch (error) {
       console.warn('The backup could not be imported', error);
       setState({
@@ -172,56 +165,7 @@ export function ImportPanel({
         />
       ) : null}
 
-      {state.step === 'done' ? (
-        <section role="status" className={`${card} space-y-2`}>
-          <h4 ref={resultHeading} tabIndex={-1} className="font-medium outline-none">
-            Import terminat
-          </h4>
-          <p>{resultText(state.summary)}</p>
-          {state.summary.ignoredSettings > 0 ? (
-            <p>{ignoredSettingsText(state.summary.ignoredSettings)}</p>
-          ) : null}
-          <details>
-            <summary className="cursor-pointer text-sm">Detalii pe tipuri</summary>
-            <table className="mt-1 w-full text-sm">
-              <caption className="sr-only">Ce s-a întâmplat cu fiecare tip de date</caption>
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700">
-                  <th scope="col" className="py-1 text-left font-medium">
-                    Tip
-                  </th>
-                  <th scope="col" className="py-1 text-right font-medium">
-                    Noi
-                  </th>
-                  <th scope="col" className="py-1 text-right font-medium">
-                    Actualizate
-                  </th>
-                  <th scope="col" className="py-1 text-right font-medium">
-                    La zi
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.summary.tables
-                  .filter((change) => change.added + change.updated + change.unchanged > 0)
-                  .map((change) => (
-                    <tr key={change.table}>
-                      <th scope="row" className="py-0.5 text-left font-normal">
-                        {TABLE_NAMES[change.table]}
-                      </th>
-                      <td className="py-0.5 text-right tabular-nums">{change.added}</td>
-                      <td className="py-0.5 text-right tabular-nums">{change.updated}</td>
-                      <td className="py-0.5 text-right tabular-nums">{change.unchanged}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </details>
-          <button type="button" className={buttonSecondary} onClick={reset}>
-            Gata
-          </button>
-        </section>
-      ) : null}
+      {state.step === 'done' ? <ResultCard summary={state.summary} onDone={reset} /> : null}
     </section>
   );
 }
