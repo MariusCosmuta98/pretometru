@@ -147,9 +147,15 @@ interface ReceiptParser {
   plata" row, `totals.vat` the table under "Total factura". `purchasedAt` is "Data Vanzare", `storeName` the seller as
   printed, `branch.city` the city of "METRO Cash&Carry <city>". Seller, bank, buyer and client-number rows are never read.
 - **Lidl** (app screenshot, OCR): two-line items `qty BUC x price` then `name total VATclass`; classes A=21, B=11;
-  split card payments (several `CARD` lines). OCR confuses 0/8 and similar; arithmetic checks catch it.
+  split card payments (several `CARD` lines). OCR confuses 0/8 and similar; arithmetic checks catch it. Review: the date
+  is often after today, so `FUTURE_DATE` must be accepted explicitly before the receipt is confirmed; `REPAIRED_DIGITS`
+  stays listed until the user edits or verifies that line; line crops show the printed row while the photo is in memory.
 - **Mega Image** (photo, OCR): `name price` then the EAN on the next line; no store name on the receipt
-  (only a merchant code on the card slip); EAN may be truncated; watermark/low resolution -> expect review.
+  (only a merchant code on the card slip); EAN may be truncated; watermark/low resolution -> expect review. Review: the
+  store is chosen in the review (the chain may arrive as `unknown`), the receipt follows the store chosen; misread prices
+  are corrected against the line crop and the live sum, and `SUM_MISMATCH` stays until the lines add up to the total.
+- **Kaufland / METRO** (review): `totalBani` is the goods total and `paidBani` ("Plătit") the amount after a voucher; a
+  METRO difference of 1 ban between Σ lines and the total is inside the tolerance and raises no warning.
 
 ## Persisted model (IndexedDB)
 
@@ -177,6 +183,17 @@ Derived line fields are computed only by `unitPricing()` (through `saveReceipt`)
 `paidUnitBani = round(lineTotalBani / qty)` and `pricePerBaseMilliBani` is the price per `baseUnit` in **milli-bani**
 (1/1000 ban). `baseUnit` is `kg`/`l` for weighed items, otherwise the base of `packUnit`, or `buc` when the size is
 unknown; compare prices only between lines that have the same `baseUnit`.
+
+**Written by the import and review screens** (`src/import`, docs/architecture.md §12):
+
+- A receipt is saved as `draft` right after the import, so that `bonuri/:receiptId` can open it, and becomes `confirmed`
+  when the user confirms it (which needs `purchasedAt`). Originals are never stored: `source.fileHash` is the SHA-256 of
+  the picked file (or of the pasted text), `source.fileName` the file's name, and `source.rawText` only the PII-free
+  `raw` text of the parsed lines (absent when the parser gave none).
+- `extraction.warnings` are the warnings standing at the last save: the review recomputes them after every edit, so a
+  corrected price drops its `SUM_MISMATCH`, while an accepted `FUTURE_DATE`, `DUPLICATE` or `SUM_MISMATCH` stays listed.
+- `lines.idx` keeps the printed order; deleting a line leaves a gap and new lines go last. A line's `productId`,
+  `categoryId` and pack come from the catalog's suggestions or the user's choice; non-product lines never carry a product.
 
 **Deviations from plan §6**
 

@@ -33,7 +33,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/storage/`               | Dexie schema + migrations, repositories, seed, JSON export/import    | `domain-storage`                      |
 | `src/parsers/`               | parser registry, `parseReceipt`, `validateReceipt`, PDF row reconstruction (pure); one folder per store: `kaufland`, `metro` (`parsers-pdf-text`), `lidl`, `mega-image`, generic fallback (`parsers-ocr-text`) | `parsers-pdf-text`, `parsers-ocr-text` |
 | `src/ocr/`                   | Tesseract.js worker (same-origin assets), pixel preprocessing, line crops; "paste text" needs no engine | `ocr-pipeline`                        |
-| `src/import/`                | file -> engine -> parser -> `ParsedReceipt` -> storage orchestration | `import-review-ui`                    |
+| `src/import/`                | file -> engine -> parser -> `ParsedReceipt` -> draft receipt -> storage orchestration, the review working copy and the save path (§12) | `import-review-ui`                    |
 | `src/import/pdf/`            | pdf.js adapter: `extractPdfText(ArrayBuffer)` -> `ReceiptSource`; the only importer of `pdfjs-dist`, worker bundled locally and loaded lazily | `parsers-pdf-text` (the rest of `src/import/` is `import-review-ui`) |
 | `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), auto-categories, merge/split (§5a) | `catalog-matching`                    |
 | `src/analytics/`             | price observations, unit price, cheapest store, trends (§5b)         | `price-analytics`                     |
@@ -41,7 +41,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
 | `src/pwa/`                   | service worker registration, update prompt, offline/share-target     | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
 | `src/features/home`, `stats` | dashboard and statistics screens                                     | `insights-dashboard` (until then `price-analytics`) |
-| `src/features/add-receipt`, `receipts` | add receipt, receipt list, review (`bonuri/:receiptId`)    | `import-review-ui`                    |
+| `src/features/add-receipt`, `receipts` | add receipt (files, camera, pasted text, manual), receipt list, review (`bonuri/:receiptId`, §12) | `import-review-ui`                    |
 | `src/features/products`      | products by category, product page (§5c)                             | `catalog-matching`, `price-analytics` |
 | `src/features/lists`         | shopping lists                                                       | `shopping-lists`                      |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
@@ -519,3 +519,96 @@ How it works:
   time (cache-first by URL); Tesseract.js's IndexedDB cache is off so the files are not stored twice.
 - Tests are Node-only: pure preprocessing/PNG/row merging, the worker host with a fake factory, and a real Vite build of
   `ocrAssetsPlugin` (`config/ocr-assets.test.ts`). The browser parts (canvas decode, crop) are covered by a manual check.
+
+## 12. Import and review (`src/import`, `src/features/add-receipt`, `src/features/receipts`)
+
+`src/import` (import from `@/import`) is React-free: it turns a picked file or pasted text into a **draft receipt** in
+the database and owns everything the review screen computes. The two features are thin screens over it.
+
+```ts
+import { getImportServices, importToDraft } from '@/import';
+
+const { saved } = await importToDraft(getImportServices(), { kind: 'file', file }, { signal, onProgress });
+// saved.receipt.id is a `draft` receipt: navigate to `/bonuri/${id}` to review it
+```
+
+### Services and ports
+
+`ImportServices = { getDb, parser, engines, catalog, now, newId }`. The sibling modules are consumed through the small
+ports of `src/import/ports.ts` (`ParserPort`, `EnginePort`, `CatalogPort`; same signatures as the agreed interfaces).
+`src/import/engines.ts` is the **composition root**: `@/parsers`, `@/catalog` and, loaded on first use, `./pdf` (pdf.js)
+and `@/ocr` (Tesseract.js). Screens call `getImportServices()`; tests replace parts with `setImportServices({...})` and
+undo it with `resetImportServices()`. A new engine (the optional Gemini one) is a change in `engines.ts` only.
+
+### Import (`importReceipt`, `importToDraft`)
+
+| Step | What happens |
+| --- | --- |
+| detect | the file signature decides (PDF header within 1 KB, JPEG/PNG/GIF/BMP/WebP/HEIC), then the declared type and the extension; text files and pasted text need no engine |
+| extract | `extractPdfText(ArrayBuffer)` / `recognizeImage(file, { signal, onProgress })` / `{ kind: 'pasted-text', text }`; no text at all is `NO_TEXT` |
+| parse | `parseReceipt(source, { now: services.now() })`; no line recognised is `NOTHING_RECOGNIZED` |
+| check | SHA-256 of the input (WebCrypto) and `findDuplicateReceipts` (same file, or same store + day + total) add a Romanian `DUPLICATE` warning |
+| save (`importToDraft`) | find-or-create the store (chain + branch), `saveReceipt` as `draft`; `importReceipt` alone persists nothing |
+
+Progress is reported per phase (`reading`, `extracting` with an OCR fraction, `parsing`, `checking`, `saving`); aborting the
+signal between steps (and inside OCR) rejects with `ImportError('CANCELLED')`. Failures are `ImportError`s whose `code`
+(`UNSUPPORTED_FORMAT`, `EMPTY_INPUT`, `FILE_TOO_LARGE`, `NO_TEXT`, `NOTHING_RECOGNIZED`, `ENGINE_UNAVAILABLE`,
+`EXTRACTION_FAILED`, `SAVE_FAILED`, `CANCELLED`) the screen turns into Romanian text. Limits: 40 MB per file, 200,000
+characters of pasted text.
+
+**Originals are never persisted or synced** (the contracts have no place for them). The picked image stays in memory in a
+**review session** (`getReviewSession(receiptId)`, the five most recent receipts) for the line crops, together with what
+`Line` cannot hold: the printed VAT totals and per line `bbox`, `confidence`, `raw`, `unitPriceBani`, `vatClass`. A page
+reload drops the session: the review keeps working without crops, and import warnings that need those details stay on
+screen until the user edits or verifies the line they point at. `receipts.source.rawText` holds only the PII-free `raw`
+text of the parsed lines (never the document's text).
+
+### Save path (`saveDraft`, `confirmDraft`, `loadDraft`, `discardReceipt`)
+
+`ReceiptDraft` is the typed working shape (store as a spec, `DraftLine`s with ids, `source`, `extraction`). Saving maps
+it to `saveReceipt`: `ParsedLine` -> `LineInput` (`qtyUnit` -> `unit`, `discountBani` defaults to 0, the pack -> `packQty`,
+`packUnit`, `unitsPerPack`; only persisted fields are written, non-product lines never keep a product), `source.kind`
+`pdf` | `image` | `text` | `manual` from the engine, `extraction` from `meta`, and the warnings standing at that moment.
+The unit prices are derived by the storage layer, never here. `confirmDraft` saves as `confirmed` and then calls
+`rememberMappings(db, chain, choices)` for the mapped product lines, with the line's effective pack (the catalog only
+returns `mapping.pack` when the printed name has none, so `mapping.pack ?? line.pack` and `line.pack ?? mapping.pack`
+agree); a failing catalog does not undo the confirmation (`ConfirmResult.mappingError`). The store is reused while its
+chain and branch are unchanged; changing the chain in the review finds or creates the store of the new chain.
+
+### Review working copy
+
+`ReceiptForm` keeps every number as the text the user typed (`12,` never fights the input; invalid text is reported, never
+replaced). `readForm(form)` returns the typed `ReceiptDraft` plus per-field errors (lines with an invalid field are left
+out, so it is only safe to persist when `hasErrors` is false). `analyze(draft, ctx)` re-runs `validateReceipt` after
+every edit, adds `DUPLICATE` (async `findDuplicates`) and `UNKNOWN_CHAIN`, keeps the import warnings that cannot be
+recomputed (`REPAIRED_DIGITS`, `LOW_CONFIDENCE`, and `LINE_ARITHMETIC` once the printed unit price is gone) and returns the
+live sum against the printed total. `FUTURE_DATE`, `DUPLICATE` and `SUM_MISMATCH` must be accepted before a receipt is
+confirmed; an acceptance is a token of what was accepted (the date, the difference, the duplicate ids), so editing it
+away makes the question come back. `confirmBlockers` lists what stops a confirmation (a date, a total above 0, a line, a
+valid value in every field, the acceptances); a draft can be saved with anything but invalid values.
+`reviewReducer` is the pure state machine behind the screen (edits, verified lines, acceptances, `saved`).
+
+### Screens
+
+| Route | Screen |
+| --- | --- |
+| `adauga` | files (several at once, read one after the other), camera (`capture="environment"`), pasted text, a link to manual entry; progress with cancel, Romanian errors per file; one file opens its review, several are listed |
+| `bonuri` | newest first (purchase date, else creation), store, date, total, draft/confirmed; filters by state, store and month |
+| `bonuri/:receiptId` | review/edit: store/chain override, date, document, totals; live Σ lines against the total; warnings panel; per line name, quantity, unit, total, discount, kind, EAN, pack, derived price, crop, product and category (`searchProducts`, `createProduct`, the catalog's suggestions); save draft / confirm / delete |
+| `bonuri/nou` | a receipt typed in by hand; nothing is stored until the first save, then it moves to its own route |
+
+Route modules export `Component` and, in a separate file, a `loader` (`receiptsLoader.ts`, `reviewLoader.ts`); the
+loader reads the database and the screen never touches it directly. Leaving the review with unsaved edits asks first
+(`useBlocker` and `beforeunload`).
+
+Accessibility conventions (a Playwright suite will target these): every field is a `<label for>` whose text is the
+visible label plus a screen-reader suffix for lines (`Total linie (lei), linia 9`); buttons carry the line in their name
+(`Șterge linia 3`, `Alege produsul, linia 3`); dialogs are `role="dialog"` with focus moved in, Tab kept inside, Escape
+to close and focus returned to the opener; a refused confirmation moves focus to the first blocker and lists all of them
+in a `role="alert"` region; the warnings panel is the `region` named "Avertismente". Money is formatted with the `@/domain`
+helpers, typed as `12,50` and normalised when the field loses focus.
+
+Tests: `src/import/testing.ts` has fakes for the ports (`fakeEngines`, `fakeParser` backed by the real validation,
+`fakeCatalog`, `testServices`); `src/features/receipts/testing.tsx` renders the whole app router over an in-memory
+database with a fixture's ground truth as the parser's answer. The flows drive import, review, an edited price and the
+confirmation for the Kaufland, METRO, Lidl and Mega Image fixtures.
