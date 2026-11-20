@@ -60,7 +60,14 @@ const restrictImports = (group, message) => ({
 });
 
 export default defineConfig([
-  globalIgnores(['dist', 'dev-dist', 'coverage', 'node_modules']),
+  globalIgnores([
+    'dist',
+    'dev-dist',
+    'coverage',
+    'node_modules',
+    'playwright-report',
+    'test-results',
+  ]),
 
   {
     files: ['**/*.{ts,tsx}'],
@@ -83,7 +90,13 @@ export default defineConfig([
   },
 
   {
-    files: ['vite.config.ts', 'config/**/*.ts', 'scripts/**/*.ts'],
+    files: [
+      'vite.config.ts',
+      'playwright.config.ts',
+      'config/**/*.ts',
+      'scripts/**/*.ts',
+      'e2e/**/*.ts',
+    ],
     languageOptions: { globals: globals.node },
   },
 

@@ -19,6 +19,7 @@
     "check:leaks": "node scripts/check-leaks.ts",
     "ocr:bench": "node scripts/ocr-bench.ts",
     "check": "npm run check:leaks && npm run lint && npm run typecheck && npm test && npm run build",
+    "e2e": "npm run build && playwright test",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
