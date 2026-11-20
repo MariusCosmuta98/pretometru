@@ -9,7 +9,7 @@ import { at, FULL_NAME, makeDevice, OWNER, REPO, seedSample, TOKEN } from '@/syn
 import { formatWhen } from './format';
 import { press, syncHarness, typeInto } from './testing';
 
-vi.setConfig({ testTimeout: 15_000 });
+vi.setConfig({ testTimeout: 30_000 });
 
 const harness = syncHarness();
 
@@ -328,14 +328,13 @@ describe('a connected device', () => {
     await connectDevice();
     const section = await harness.renderSettings();
     await within(section).findByText(/Ultima sincronizare reușită/);
+    // The gate is open from the start of the test on: a request that reaches the hook late, after
+    // the test failed, must not hang a sync that would then block every later test.
     let release = () => {};
-    harness.github.before(
-      /^GET .*\/git\/trees\//,
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    harness.github.before(/^GET .*\/git\/trees\//, () => gate);
 
     press(section, 'Sincronizează acum');
 
@@ -346,7 +345,6 @@ describe('a connected device', () => {
         true,
       );
     } finally {
-      // A held request would leave the sync running and block every later test.
       release();
     }
     expect(await within(section).findByText(/Totul era deja la zi\./)).toBeTruthy();

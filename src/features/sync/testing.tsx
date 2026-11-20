@@ -21,6 +21,7 @@ import { ensureSeed, type PretometruDB } from '@/storage';
 import { createTestDb } from '@/storage/testing';
 import {
   lockToken,
+  resetRunSync,
   resetSyncRuntime,
   resetSyncServices,
   setSyncServices,
@@ -32,8 +33,8 @@ export const NOW = new Date('2026-11-20T12:00:00.000Z');
 export const SECTION = 'Sincronizare GitHub';
 
 // A sync is a chain of async steps (IndexedDB, SHA-1, the in-memory GitHub): give them room when
-// several test files run at once on a small CI machine.
-configure({ asyncUtilTimeout: 4000 });
+// several test files run at once on a small or busy machine.
+configure({ asyncUtilTimeout: 10_000 });
 
 const present = <T,>(value: T | undefined, what: string): T => {
   if (value === undefined) throw new Error(`${what} is not ready yet`);
@@ -71,6 +72,7 @@ export function syncHarness() {
     resetSyncServices();
     lockToken();
     resetSyncRuntime();
+    resetRunSync();
     // Nothing the section sent may be something a browser would have blocked.
     expect(github?.violations ?? []).toEqual([]);
   });

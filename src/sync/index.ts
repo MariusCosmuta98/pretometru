@@ -19,7 +19,7 @@ export { isAbortError, isBlockingCode, isSyncError, SYNC_ERROR_CODES, SyncError 
 export type { SyncErrorCode } from './errors';
 export { isValidRepoRef, parseRepoRef, tokenKind } from './github';
 export type { TokenKind } from './github';
-export { runSync } from './run';
+export { resetRunSync, runSync } from './run';
 export { getSyncRuntime, resetSyncRuntime, subscribeSyncRuntime } from './runtime';
 export type { SyncPhase, SyncRuntime } from './runtime';
 export { getSyncServices, resetSyncServices, setSyncServices } from './services';

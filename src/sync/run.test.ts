@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRecord, ensureSeed, type PretometruDB } from '@/storage';
 import { createTestDb } from '@/storage/testing';
 import { lockToken, saveConnection, unlockToken } from './connection';
-import { runSync } from './run';
+import { resetRunSync, runSync } from './run';
 import { getSyncRuntime, resetSyncRuntime, type SyncRuntime } from './runtime';
 import { resetSyncServices, setSyncServices } from './services';
 import { loadSyncView, readStatus } from './status';
@@ -29,6 +29,7 @@ afterEach(() => {
   resetSyncServices();
   lockToken();
   resetSyncRuntime();
+  resetRunSync();
   expect(github.violations).toEqual([]);
 });
 

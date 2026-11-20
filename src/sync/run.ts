@@ -74,3 +74,8 @@ export function runSync(): Promise<SyncResult> {
   });
   return inFlight;
 }
+
+/** Forgets a sync that is still running (tests: one that hangs must not block the next test). */
+export function resetRunSync(): void {
+  inFlight = undefined;
+}

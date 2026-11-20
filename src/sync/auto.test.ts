@@ -3,7 +3,7 @@ import { createRecord, ensureSeed, type PretometruDB } from '@/storage';
 import { createTestDb } from '@/storage/testing';
 import { startAutoSync, type AutoSync, type AutoSyncEnvironment } from './auto';
 import { lockToken, saveConnection, setAutoSync, unlockToken } from './connection';
-import { runSync } from './run';
+import { resetRunSync, runSync } from './run';
 import { resetSyncRuntime } from './runtime';
 import { getSyncServices, resetSyncServices, setSyncServices } from './services';
 import { readStatus } from './status';
@@ -98,6 +98,7 @@ afterEach(() => {
   resetSyncServices();
   lockToken();
   resetSyncRuntime();
+  resetRunSync();
   expect(github.violations).toEqual([]);
 });
 
