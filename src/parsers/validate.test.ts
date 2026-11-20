@@ -9,7 +9,6 @@ import {
   checkSumMismatch,
   checkVatTotals,
   expectedLineTotal,
-  lineToleranceBani,
   validateReceipt,
 } from './validate';
 
@@ -212,15 +211,13 @@ describe('checkLineArithmetic', () => {
     expect(codes(lineWarnings({ ...base, lineTotalBani: 3038 }))).toEqual(['LINE_ARITHMETIC']);
   });
 
-  it('allows 1 ban for a single unit and half a ban more per extra unit', () => {
-    const at = (qty: number, lineTotalBani: number) =>
-      lineWarnings({ qty, unitPriceBani: 1000, lineTotalBani: qty * 1000 + lineTotalBani });
+  it('allows 1 ban between the printed total and quantity x unit price', () => {
+    const at = (qty: number, drift: number) =>
+      lineWarnings({ qty, unitPriceBani: 1000, lineTotalBani: qty * 1000 + drift });
     expect(at(1, 1)).toEqual([]);
+    expect(at(6, -1)).toEqual([]);
     expect(codes(at(1, 2))).toEqual(['LINE_ARITHMETIC']);
-    expect(at(3, -2)).toEqual([]);
-    expect(codes(at(3, 3))).toEqual(['LINE_ARITHMETIC']);
-    expect(at(6, 4)).toEqual([]);
-    expect(codes(at(6, 5))).toEqual(['LINE_ARITHMETIC']);
+    expect(codes(at(6, 2))).toEqual(['LINE_ARITHMETIC']);
   });
 
   it('skips lines without a printed unit price', () => {
@@ -237,12 +234,10 @@ describe('checkLineArithmetic', () => {
     expect(checkLineArithmetic(receipt)).toMatchObject([{ lineIdx: 9 }]);
   });
 
-  it('exposes the expected total and the tolerance for reuse', () => {
+  it('exposes the expected total for reuse', () => {
     const line = makeParsedLine({ qty: 3, unitPriceBani: 499, discountBani: 302 });
     expect(expectedLineTotal(line)).toBe(1195);
     expect(expectedLineTotal(makeParsedLine())).toBeUndefined();
-    expect(lineToleranceBani(makeParsedLine({ qty: 0.92 }))).toBe(1);
-    expect(lineToleranceBani(line)).toBe(2);
   });
 });
 

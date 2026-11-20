@@ -13,7 +13,7 @@ import {
 
 /** Σ lines vs the printed TOTAL: some documents round VAT per rate (METRO is 1 ban off). */
 export const SUM_TOLERANCE_BANI = 5;
-/** qty × unit price - discount vs the line total; see `lineToleranceBani`. */
+/** qty × unit price - discount vs the line total. */
 export const LINE_TOLERANCE_BANI = 1;
 /** Σ lines of one VAT rate vs the printed total of that rate: the same rounding as the grand total. */
 export const VAT_TOLERANCE_BANI = SUM_TOLERANCE_BANI;
@@ -93,7 +93,8 @@ export function checkSumMismatch(receipt: ParsedReceipt): ParseWarning[] {
 
 /**
  * The line total that the printed quantity, unit price and discount imply, rounded to the ban.
- * `undefined` when the line has no (usable) unit price: nothing to cross-check.
+ * `undefined` when the line has no (usable) unit price: nothing to cross-check. A unit price is
+ * only reported when it is printed, so there is no rounding drift to allow for beyond 1 ban.
  */
 export function expectedLineTotal(line: ParsedLine): number | undefined {
   const { qty, unitPriceBani, discountBani = 0 } = line;
@@ -107,21 +108,13 @@ export function expectedLineTotal(line: ParsedLine): number | undefined {
   }
 }
 
-/**
- * 1 ban (contracts.md) plus half a ban per sold unit: the unit price, and an ex-VAT discount that
- * was converted, are rounded to the ban while the printed total is not, so 6 packs can drift by 3.
- */
-export function lineToleranceBani(line: ParsedLine): number {
-  return LINE_TOLERANCE_BANI + Math.floor(Math.abs(line.qty) / 2);
-}
-
-/** LINE_ARITHMETIC: qty × unit price - discount vs the line total. */
+/** LINE_ARITHMETIC: qty × unit price - discount vs the line total (±1 ban). */
 export function checkLineArithmetic(receipt: ParsedReceipt): ParseWarning[] {
   const warnings: ParseWarning[] = [];
   for (const line of receipt.lines) {
     const expected = expectedLineTotal(line);
     if (expected === undefined || !isAmount(line.lineTotalBani)) continue;
-    if (Math.abs(expected - line.lineTotalBani) <= lineToleranceBani(line)) continue;
+    if (Math.abs(expected - line.lineTotalBani) <= LINE_TOLERANCE_BANI) continue;
 
     const discount = line.discountBani ? ` − ${lei(line.discountBani)}` : '';
     warnings.push({
