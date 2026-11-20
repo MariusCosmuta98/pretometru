@@ -5,6 +5,7 @@ import {
   parseLeiInput,
   parseQtyInput,
   type AckCode,
+  type Analysis,
   type Blocker,
   type DraftLine,
   type FieldError,
@@ -121,6 +122,41 @@ export function ackLabel(
       return 'Confirm că este un bon diferit de cel deja salvat';
     case 'SUM_MISMATCH':
       return `Confirm că diferența de ${formatLei(Math.abs(context.differenceBani))} față de total este corectă`;
+  }
+}
+
+type SumFacts = Pick<Analysis, 'differenceBani' | 'sumMatch' | 'toleranceBani'>;
+
+const signedLei = (bani: number) => `${bani > 0 ? '+' : '−'}${formatLei(Math.abs(bani))}`;
+
+/**
+ * How the sum line ends. The sum line and the warnings panel (`noWarningsText`) tell the same
+ * story from the same value, `Analysis.sumMatch`. Tests of other screens find the sum line by
+ * "diferență" or "se potrivesc", one element each: keep those words out of the rest of the screen.
+ */
+export function sumStatusText({ differenceBani, sumMatch, toleranceBani }: SumFacts): string {
+  const limit = `±${formatLei(toleranceBani)}`;
+  switch (sumMatch) {
+    case 'exact':
+      return 'se potrivesc';
+    case 'within-tolerance':
+      return `diferență ${signedLei(differenceBani)}, acceptată (în limita de ${limit})`;
+    case 'outside-tolerance':
+      return `diferență ${signedLei(differenceBani)}, peste limita de ${limit}`;
+  }
+}
+
+/** What the warnings panel says when it has no warning to list. */
+export function noWarningsText({ differenceBani, sumMatch, toleranceBani }: SumFacts): string {
+  const limit = `±${formatLei(toleranceBani)}`;
+  switch (sumMatch) {
+    case 'exact':
+      return 'Nu am găsit nicio problemă: suma liniilor se potrivește cu totalul.';
+    case 'within-tolerance':
+      return `Nu am găsit nicio problemă: suma liniilor diferă de total cu ${signedLei(differenceBani)}, în limita acceptată de ${limit}.`;
+    // Not reached with the real validation, which flags such a difference.
+    case 'outside-tolerance':
+      return `Suma liniilor diferă de total cu ${signedLei(differenceBani)}, peste limita acceptată de ${limit}.`;
   }
 }
 

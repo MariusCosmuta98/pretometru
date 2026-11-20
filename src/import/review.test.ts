@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ParseWarning, Receipt } from '@/domain';
 import { makeReceipt } from '@/domain/testing';
+import { SUM_TOLERANCE_BANI } from '@/parsers';
 import { draftFromParsed, type ReceiptDraft } from './draft';
 import { formFromDraft, patchLine, readForm } from './form';
 import {
@@ -77,6 +78,62 @@ describe('analyze', () => {
     expect(codes(analysis)).toEqual(['DUPLICATE', 'UNKNOWN_CHAIN']);
     expect(analysis.ackTokens.DUPLICATE).toBe(twin.id);
     expect(analysis.warnings.find((w) => w.code === 'DUPLICATE')?.message).toMatch(/similar/);
+  });
+
+  describe('the sum of the lines against the printed total', () => {
+    // The sample's lines add up to 39,45. The total moves, so the difference is `sum - total`.
+    const SUM = 3945;
+    const withDifference = (differenceBani: number) =>
+      analyze(sampleDraft({ totalBani: SUM - differenceBani }), context());
+
+    it.each([
+      [0, 'exact'],
+      [1, 'within-tolerance'],
+      [-1, 'within-tolerance'],
+      [SUM_TOLERANCE_BANI, 'within-tolerance'],
+      [-SUM_TOLERANCE_BANI, 'within-tolerance'],
+      [SUM_TOLERANCE_BANI + 1, 'outside-tolerance'],
+      [-(SUM_TOLERANCE_BANI + 1), 'outside-tolerance'],
+    ] as const)('a difference of %i bani is %s', (differenceBani, sumMatch) => {
+      const analysis = withDifference(differenceBani);
+      expect(analysis).toMatchObject({
+        differenceBani,
+        sumMatch,
+        toleranceBani: SUM_TOLERANCE_BANI,
+      });
+    });
+
+    it('is outside the tolerance exactly when the parsers raise SUM_MISMATCH', () => {
+      for (
+        let difference = -2 * SUM_TOLERANCE_BANI;
+        difference <= 2 * SUM_TOLERANCE_BANI;
+        difference++
+      ) {
+        const analysis = withDifference(difference);
+        expect(codes(analysis).includes('SUM_MISMATCH'), `a difference of ${difference} bani`).toBe(
+          analysis.sumMatch === 'outside-tolerance',
+        );
+      }
+    });
+
+    it('keeps the amounts as they are: a difference inside the tolerance is shown, never absorbed', () => {
+      const analysis = withDifference(SUM_TOLERANCE_BANI);
+      expect(analysis).toMatchObject({ sumBani: SUM, totalBani: SUM - SUM_TOLERANCE_BANI });
+      expect(analysis.ackTokens).toEqual({});
+      expect(analysis.warnings).toEqual([]);
+    });
+
+    it('has no tolerance for a total that was not read', () => {
+      const [first] = sampleDraft().lines;
+      if (!first) throw new Error('missing line');
+      const analysis = analyze(
+        sampleDraft({ totalBani: 0, lines: [{ ...first, lineTotalBani: SUM_TOLERANCE_BANI }] }),
+        context(),
+      );
+      expect(analysis.differenceBani).toBe(SUM_TOLERANCE_BANI);
+      expect(analysis.sumMatch).toBe('outside-tolerance');
+      expect(codes(analysis)).toContain('MISSING_TOTAL');
+    });
   });
 
   describe('warnings carried over from the import', () => {

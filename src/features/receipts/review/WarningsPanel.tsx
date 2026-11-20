@@ -3,7 +3,7 @@ import { formatLei, type ParseWarning, type Receipt, type WarningCode } from '@/
 import { ACK_CODES, RECEIPT_REVIEW_KEY, type AckCode, type Acks, type Analysis } from '@/import';
 import { buttonQuiet, card } from '@/ui/controls';
 import { formatPurchasedAt, WARNING_TITLES } from '../labels';
-import { ackDomId, ackLabel } from './text';
+import { ackDomId, ackLabel, noWarningsText } from './text';
 
 export interface LineRef {
   id: string;
@@ -69,9 +69,7 @@ export function WarningsPanel({
         Avertismente{warnings.length > 0 ? ` (${warnings.length})` : ''}
       </h2>
       {warnings.length === 0 ? (
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Nu am găsit nicio problemă: suma liniilor se potrivește cu totalul.
-        </p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{noWarningsText(analysis)}</p>
       ) : (
         <ul className="space-y-2">
           {warnings.map((warning: ParseWarning, index) => {

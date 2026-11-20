@@ -1,5 +1,6 @@
 import type { ParseWarning, Receipt, WarningCode } from '@/domain';
 import { sumBani } from '@/domain';
+import { SUM_TOLERANCE_BANI } from '@/parsers';
 import { duplicateWarning } from './duplicates';
 import { parsedFromDraft, type ReceiptDraft } from './draft';
 import type {
@@ -64,6 +65,10 @@ export interface Analysis {
   totalBani: number;
   /** Sum of the lines minus the printed total. */
   differenceBani: number;
+  /** How `differenceBani` stands against the parsers' tolerance. */
+  sumMatch: SumMatch;
+  /** The tolerance behind `sumMatch`, in bani: the parsers' `SUM_TOLERANCE_BANI`. */
+  toleranceBani: number;
   /** Receipt-level warnings first, then the lines' in printed order. */
   warnings: ParseWarning[];
   /**
@@ -73,6 +78,25 @@ export interface Analysis {
   dismissible: ReadonlySet<ParseWarning>;
   /** Tokens of the warnings that need an acceptance right now. */
   ackTokens: Acks;
+}
+
+/**
+ * How the lines add up against the printed total: to the ban, off by a few bani that the parsers
+ * accept (METRO prints its VAT rounded per rate, so an invoice can be 1 ban off), or beyond that
+ * tolerance, which is what raises SUM_MISMATCH.
+ */
+export type SumMatch = 'exact' | 'within-tolerance' | 'outside-tolerance';
+
+/**
+ * Classifies `sum - total` with the parsers' own tolerance, so that the screen never calls a
+ * difference acceptable that the validation flags, or the other way round. A total that was not
+ * read (0) has nothing to be within tolerance of, like in `checkSumMismatch`.
+ */
+export function sumMatchOf(differenceBani: number, totalBani: number): SumMatch {
+  if (differenceBani === 0) return 'exact';
+  return totalBani !== 0 && Math.abs(differenceBani) <= SUM_TOLERANCE_BANI
+    ? 'within-tolerance'
+    : 'outside-tolerance';
 }
 
 const orderOf = (code: WarningCode) => DISPLAY_ORDER.indexOf(code);
@@ -137,6 +161,8 @@ export function analyze(draft: ReceiptDraft, context: ReviewContext): Analysis {
     sumBani: sum,
     totalBani: draft.totalBani,
     differenceBani,
+    sumMatch: sumMatchOf(differenceBani, draft.totalBani),
+    toleranceBani: SUM_TOLERANCE_BANI,
     warnings,
     dismissible,
     ackTokens,

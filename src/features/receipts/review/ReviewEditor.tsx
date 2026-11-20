@@ -20,6 +20,7 @@ import {
   type AiReadPhase,
   type Blocker,
   type NewProductInput,
+  type SumMatch,
 } from '@/import';
 import { buttonDanger, buttonPrimary, buttonSecondary, card, noticeClass } from '@/ui/controls';
 import { SOURCE_LABELS, STATUS_LABELS } from '../labels';
@@ -29,11 +30,18 @@ import { Dialog } from './Dialog';
 import { LineEditor } from './LineEditor';
 import { ProductPicker } from './ProductPicker';
 import { ReceiptDetails } from './ReceiptDetails';
-import { ADD_LINE_DOM_ID, blockerDomId, blockerText } from './text';
+import { ADD_LINE_DOM_ID, blockerDomId, blockerText, sumStatusText } from './text';
 import { WarningsPanel, type LineRef } from './WarningsPanel';
 
 type Busy = 'draft' | 'confirm' | 'delete';
 type Message = { tone: 'success' | 'warning' | 'error'; text: string };
+
+/** An exact match is good news, a difference the parsers accept is neutral, one beyond them is a problem. */
+const SUM_TONES = {
+  exact: 'success',
+  'within-tolerance': 'info',
+  'outside-tolerance': 'warning',
+} as const satisfies Record<SumMatch, keyof typeof noticeClass>;
 
 /** Moves focus to a field, opening the "more details" fold it may be hidden in. */
 function focusById(domId: string) {
@@ -322,7 +330,6 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
     }
   }
 
-  const sumsMatch = analysis.differenceBani === 0;
   const pickerLineForm = form.lines.find((line) => line.id === pickerLine);
   const pickerSuggestion = pickerLine ? suggestions[pickerLine] : undefined;
   const source = form.source;
@@ -402,16 +409,10 @@ export function ReviewEditor({ data }: { data: ReviewReady }) {
         }}
       />
 
-      <p
-        role="status"
-        aria-live="polite"
-        className={sumsMatch ? noticeClass.success : noticeClass.warning}
-      >
+      <p role="status" aria-live="polite" className={noticeClass[SUM_TONES[analysis.sumMatch]]}>
         Suma liniilor: <strong>{formatLei(analysis.sumBani)}</strong> · Total bon:{' '}
         <strong>{formatLei(analysis.totalBani)}</strong>
-        {sumsMatch
-          ? ' · se potrivesc'
-          : ` · diferență ${analysis.differenceBani > 0 ? '+' : '−'}${formatLei(Math.abs(analysis.differenceBani))}`}
+        {` · ${sumStatusText(analysis)}`}
       </p>
 
       <WarningsPanel

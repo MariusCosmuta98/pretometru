@@ -865,6 +865,16 @@ away makes the question come back. `confirmBlockers` lists what stops a confirma
 valid value in every field, the acceptances); a draft can be saved with anything but invalid values.
 `reviewReducer` is the pure state machine behind the screen (edits, verified lines, acceptances, `saved`).
 
+**One verdict for the sum.** `analyze` classifies `Σ lines - total` once, as `Analysis.sumMatch`, with the parsers'
+`SUM_TOLERANCE_BANI` (§10; `Analysis.toleranceBani` carries it): `exact` (to the ban), `within-tolerance` (1 to 5 bani, e.g.
+the METRO invoice, which prints its VAT rounded per rate and is 1 ban off: no warning, nothing to accept, the amounts are
+shown and stored as they are) or `outside-tolerance` (what raises `SUM_MISMATCH`, which has to be accepted; a total that was
+not read has no tolerance). The sum line above the warnings and the warnings panel both read that value (`sumStatusText`,
+`noWarningsText` in `features/receipts/review/text.ts`), so they cannot disagree: green "se potrivesc" and "suma liniilor se
+potrivește cu totalul"; neutral "diferență +0,01 lei, acceptată (în limita de ±0,05 lei)" and the same difference, said as
+within the accepted limit, in the panel; amber "diferență +0,06 lei, peste limita de ±0,05 lei" next to the `SUM_MISMATCH`
+warning and its checkbox. Only the sum line uses the words "diferență" and "se potrivesc" (other tests look for them).
+
 ### Screens
 
 | Route | Screen |
