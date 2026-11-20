@@ -31,6 +31,12 @@ test.describe('the production build offline', () => {
     for (const route of routes) {
       await visitFresh(page, route);
       await expect(page.getByRole('heading', { level: 1 }), route).toBeVisible();
+      if (route === 'setari') {
+        // The layout heading renders before the lazy panels. Leaving early can cancel their requests.
+        const about = page.getByRole('region', { name: 'Despre aplicație' });
+        await expect(about).toContainText('Datele tale (bonuri, produse, prețuri) rămân');
+        await expect(page.getByText('Se încarcă…', { exact: true })).toHaveCount(0);
+      }
       expect(await page.locator('main').innerText(), route).not.toContain('A apărut o eroare');
     }
 

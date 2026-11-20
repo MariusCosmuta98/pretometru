@@ -55,7 +55,8 @@ export function watchForProblems(page: Page): () => string[] {
     if (message.type() === 'error') seen.push(`console: ${message.text()}`);
   });
   page.on('requestfailed', (request) => {
-    if (!request.url().endsWith('/sw.js')) seen.push(`request failed: ${request.url()}`);
+    if (!request.url().endsWith('/sw.js'))
+      seen.push(`request failed (${request.failure()?.errorText}): ${request.url()}`);
   });
   return () => [...seen];
 }
