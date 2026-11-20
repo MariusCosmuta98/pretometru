@@ -1,6 +1,6 @@
 import { BaniSchema, type ParsedReceipt, type ParseWarning, type ReceiptSource } from '@/domain';
 import { findAmounts } from '../plain-text/amounts';
-import { findPurchasedAt } from '../plain-text/dates';
+import { readPurchasedAt } from '../plain-text/dates';
 import { readItems } from '../plain-text/items';
 import { readQuantityLine } from '../plain-text/quantity-line';
 import { buildLine, sourceConfidence } from '../plain-text/receipt';
@@ -16,7 +16,7 @@ import { textLines, type TextLine } from '../plain-text/text-lines';
 import { readVatRate } from '../plain-text/vat-rate';
 import { engineForSource } from '../source';
 
-export const LIDL_VERSION = '1.0.0';
+export const LIDL_VERSION = '1.0.1';
 
 const STORE = /\blidl\b/i;
 // `2,000 BUC x 4,05`: Lidl prints the pieces with three decimals above every product.
@@ -141,7 +141,8 @@ export function parseLidl(source: ReceiptSource): ParsedReceipt {
   const grandTotalBani = total ?? subtotal ?? paidBani ?? 0;
 
   const { storeName, city } = readHeader(lines.slice(0, end));
-  const purchasedAt = findPurchasedAt(lines);
+  const { purchasedAt, warnings: dateWarnings } = readPurchasedAt(lines);
+  warnings.push(...dateWarnings);
   const confidence = sourceConfidence(source);
 
   const receipt: ParsedReceipt = {

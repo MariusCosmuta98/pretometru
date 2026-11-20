@@ -140,6 +140,19 @@ describe('Mega Image parser on other receipts', () => {
     );
   });
 
+  it('keeps the date and leaves out a time it cannot read, instead of making one up from its tail', () => {
+    const printedAs = (dateLine: string) =>
+      SYNTHETIC.map((line) => (line.startsWith('DATA') ? dateLine : line));
+
+    const damaged = parse(text(printedAs('DATA :01/02/2026 ORA:1/-03-04')));
+    expect(damaged.purchasedAt).toBe('2026-02-01');
+    expect(codes(damaged)).toEqual(['LOW_CONFIDENCE:-']);
+
+    const clean = parse(text(printedAs('DATA :01/02/2026 ORA:13-03-04')));
+    expect(clean.purchasedAt).toBe('2026-02-01T13:03:04');
+    expect(codes(clean)).toEqual([]);
+  });
+
   it('stops at the card slip when there is no TOTAL row, leaving the total to the validation', () => {
     const receipt = parse(text(SYNTHETIC.filter((line) => !line.startsWith('TOTAL'))));
 

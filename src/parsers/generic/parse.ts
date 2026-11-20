@@ -1,5 +1,5 @@
 import type { ParsedReceipt, ParseWarning, ReceiptSource } from '@/domain';
-import { findPurchasedAt } from '../plain-text/dates';
+import { readPurchasedAt } from '../plain-text/dates';
 import { readItems } from '../plain-text/items';
 import { buildLine, sourceConfidence } from '../plain-text/receipt';
 import { repairReceipt } from '../plain-text/repair';
@@ -7,7 +7,7 @@ import { isTotalsRow, readTotalRow } from '../plain-text/rows';
 import { textLines, type TextLine } from '../plain-text/text-lines';
 import { engineForSource } from '../source';
 
-export const GENERIC_VERSION = '1.0.0';
+export const GENERIC_VERSION = '1.0.1';
 
 /** What `detect` answers for any text: low and constant, so every specific parser wins over it. */
 export const GENERIC_DETECT_SCORE = 0.05;
@@ -42,7 +42,7 @@ export function parseGeneric(source: ReceiptSource): ParsedReceipt {
     skip: notAnItem,
   });
   const grandTotalBani = lines.map(totalOf).find((amount) => amount !== undefined) ?? 0;
-  const purchasedAt = findPurchasedAt(lines);
+  const { purchasedAt, warnings: dateWarnings } = readPurchasedAt(lines);
   const confidence = sourceConfidence(source);
 
   const warnings: ParseWarning[] = [
@@ -59,6 +59,7 @@ export function parseGeneric(source: ReceiptSource): ParsedReceipt {
       message:
         'Linia produsului nu a putut fi citită; s-au păstrat doar cantitatea și prețul unitar.',
     })),
+    ...dateWarnings,
   ];
 
   const receipt: ParsedReceipt = {

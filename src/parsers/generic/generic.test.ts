@@ -13,7 +13,7 @@ const pasted = (...lines: string[]): ReceiptSource => ({
 });
 
 // A receipt of an invented store: no parser knows its layout.
-const RECEIPT = pasted(
+const RECEIPT_ROWS = [
   'MAGAZIN EXEMPLU SRL',
   'CUI: RO1234567',
   'LAPTE UHT 1L          5,99 B',
@@ -25,8 +25,8 @@ const RECEIPT = pasted(
   'SUBTOTAL 16,03',
   'TOTAL 16,03',
   'CARD 16,03',
-  'DATA: 20/11/2026 ORA: 09:30:15',
-);
+];
+const RECEIPT = pasted(...RECEIPT_ROWS, 'DATA: 20/11/2026 ORA: 09:30:15');
 
 describe('generic parser', () => {
   it('reads products with their quantity, EAN and VAT class, the total and the date, and says it is unsure', () => {
@@ -128,6 +128,27 @@ describe('generic parser', () => {
       now: NOW,
     });
     expect(after.lines.map((line) => line.rawName)).toEqual(['LAPTE']);
+  });
+
+  it('keeps the date and leaves out a time it cannot read, instead of making one up from its tail', () => {
+    const damaged = parseReceipt(pasted(...RECEIPT_ROWS, 'DATA :01/02/2026 ORA:1/-03-04'), {
+      now: NOW,
+    });
+    expect(damaged.purchasedAt).toBe('2026-02-01');
+    // the note about the time comes on top of the generic reading's own
+    expect(
+      damaged.meta.warnings.filter(
+        (warning) => warning.code === 'LOW_CONFIDENCE' && warning.lineIdx === undefined,
+      ),
+    ).toHaveLength(2);
+
+    const clean = parseReceipt(pasted(...RECEIPT_ROWS, 'DATA :01/02/2026 ORA:13-03-04'), {
+      now: NOW,
+    });
+    expect(clean.purchasedAt).toBe('2026-02-01T13:03:04');
+    expect(clean.meta.warnings.filter((warning) => warning.code === 'LOW_CONFIDENCE')).toHaveLength(
+      1,
+    );
   });
 
   it('does not mistake products named like the totals block for it', () => {

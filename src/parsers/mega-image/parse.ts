@@ -1,5 +1,5 @@
 import type { ParsedReceipt, ReceiptSource } from '@/domain';
-import { findPurchasedAt } from '../plain-text/dates';
+import { readPurchasedAt } from '../plain-text/dates';
 import { readItems } from '../plain-text/items';
 import { buildLine, sourceConfidence } from '../plain-text/receipt';
 import { repairReceipt } from '../plain-text/repair';
@@ -7,7 +7,7 @@ import { readTotalRow } from '../plain-text/rows';
 import { textLines, type TextLine } from '../plain-text/text-lines';
 import { engineForSource } from '../source';
 
-export const MEGA_IMAGE_VERSION = '1.0.0';
+export const MEGA_IMAGE_VERSION = '1.0.1';
 
 // Mega Image prints no store name: the only cue in the text is the merchant line of the card slip
 // (`TERMINAL MI123456 COMERCIANT MEGA...`). The layout is the other one: every product is its name
@@ -46,7 +46,7 @@ export function parseMegaImage(source: ReceiptSource): ParsedReceipt {
   const { drafts } = readItems(lines, endOfItems(lines), { eanLines: true });
 
   const grandTotalBani = lines.map(totalOf).find((amount) => amount !== undefined) ?? 0;
-  const purchasedAt = findPurchasedAt(lines);
+  const { purchasedAt, warnings } = readPurchasedAt(lines);
   const confidence = sourceConfidence(source);
 
   const receipt: ParsedReceipt = {
@@ -62,7 +62,7 @@ export function parseMegaImage(source: ReceiptSource): ParsedReceipt {
       parser: 'mega-image',
       parserVersion: MEGA_IMAGE_VERSION,
       ...(confidence !== undefined && { confidence }),
-      warnings: [],
+      warnings,
     },
   };
   return repairReceipt(receipt);

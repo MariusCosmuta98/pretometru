@@ -241,6 +241,20 @@ describe('Lidl parser on other receipts', () => {
     expect(warningCodes(receipt).sort()).toEqual(['LINE_ARITHMETIC:1', 'SUM_MISMATCH:-'].sort());
   });
 
+  it('keeps the date and leaves out a time it cannot read, instead of making one up from its tail', () => {
+    const printedAs = (dateLine: string) =>
+      SYNTHETIC.map((line) => (line.startsWith('DATA:') ? dateLine : line));
+
+    const damaged = parse(text(printedAs('DATA :01/02/2026 ORA:1/-03-04')));
+    expect(damaged.purchasedAt).toBe('2026-02-01');
+    expect(warningCodes(damaged)).toEqual(['LOW_CONFIDENCE:-']);
+    expect(damaged.meta.warnings[0]?.message).toContain('Ora bonului');
+
+    const clean = parse(text(printedAs('DATA :01/02/2026 ORA:13-03-04')));
+    expect(clean.purchasedAt).toBe('2026-02-01T13:03:04');
+    expect(warningCodes(clean)).toEqual([]);
+  });
+
   it('does not mistake products named like the totals block for it', () => {
     const totals = SYNTHETIC.indexOf('Subtotal 13,14');
     const tricky = [
