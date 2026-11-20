@@ -52,8 +52,9 @@ secunde după ce modifici date); o poți opri sau poți apăsa oricând *Sincron
 
 ### Cum verifici manual o sincronizare reală
 
-Testele automate rulează împotriva unui GitHub simulat în memorie; autorii nu au folosit niciun token sau depozit
-real. Înainte să te bazezi pe sincronizare, parcurge:
+Testele automate rulează împotriva unui GitHub simulat în memorie (`npm test`, iar `npm run e2e` rulează build-ul de
+producție într-un Chrome real, tot cu GitHub simulat); autorii nu au folosit niciun token sau depozit real. Înainte să
+te bazezi pe sincronizare, parcurge:
 
 1. **Conectare**: cele cinci verificări apar cu ✓, iar aplicația spune că depozitul „nu conține încă date Pretometru”.
 2. **Prima sincronizare**: pe GitHub apare commitul „Prima sincronizare Pretometru (dispozitiv …)” cu fișierele din

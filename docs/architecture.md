@@ -813,7 +813,8 @@ const result = await runSync(); // { firstSync, pulled, pushed, commit, head, at
 | `status.ts`, `runtime.ts`, `run.ts`, `services.ts` | the last result, `loadSyncView`, the in-memory "running" state, `runSync` (one at a time), the injectable services (`getSyncServices`, `setSyncServices({ fetch, getDb, now, ... })`) |
 | `auto.ts`             | automatic sync (below), started by `src/main.tsx` after the first render                                  |
 | `errors.ts`           | `SyncError` with a `code` (`SYNC_ERROR_CODES`); the screen turns codes into Romanian text                |
-| `testing.ts`          | **test-only**: `MockGitHub` (an in-memory api.github.com), `makeWorld`, `makeDevice`, `seedSample`, `at(iso)` |
+| `mock-github.ts`      | **test-only**: `MockGitHub`, an in-memory api.github.com (no `@/` import, so a browser test can use it too)  |
+| `testing.ts`          | **test-only**: `makeWorld`, `makeDevice`, `seedSample`, `at(iso)` (and re-exports `MockGitHub`)           |
 
 ### Layout of the data repository
 
@@ -923,17 +924,32 @@ state from `src/sync/runtime.ts`, so it follows a sync that automatic sync start
 
 ### Tests
 
-Everything runs against `MockGitHub` (`src/sync/testing.ts`): users, tokens with `write`/`read`/`metadata` access,
+Everything runs against `MockGitHub` (`src/sync/mock-github.ts`): users, tokens with `write`/`read`/`metadata` access,
 repositories (private or public, archived, with or without a first commit), the Git Data API with real Git object ids,
 fast-forward checks, and switches to break things on purpose (`setOffline`, `failNext(match, reply)`, `before(match,
-action)` to let another device push between two requests of a sync, `limitTrees`). `makeDevice` is a database of its own
-that syncs as a user; `seedSample` fills one. The suites cover the first push, pull and merge, last write wins, ties,
-tombstones, line reconciliation of a receipt re-saved on two devices, a rejected ref update followed by a retry (and
-giving up), the private-only rule, token and permission errors, rate limits, offline, unreadable or newer repository
-data, files that are not ours, re-sharding, the token never reaching a backup or the repository, and the whole
-onboarding through the Settings screen. A repository on the real GitHub was **not** available to the authors: the
-README lists what to check by hand. The Settings tests need the global IndexedDB (`import 'fake-indexeddb/auto'`, for
-Dexie's live queries) and call `resetRunSync()` between tests so that a hung sync cannot block the next one.
+action)` to let another device push between two requests of a sync, `limitTrees`, `dispose()`). `makeDevice` (from
+`src/sync/testing.ts`) is a database of its own that syncs as a user; `seedSample` fills one. The suites cover the
+first push, pull and merge, last write wins, ties, tombstones, line reconciliation of a receipt re-saved on two devices,
+a rejected ref update followed by a retry (and giving up), the private-only rule, token and permission errors, rate
+limits, offline, unreadable or newer repository data, files that are not ours, re-sharding, the token never reaching a
+backup or the repository, automatic sync (a fake clock, timers and triggers), and the whole onboarding through the
+Settings screen.
+
+**Test hygiene.** A test must never leave a sync running into the next one: a request held by a hook is released by a
+gate that exists from the start of the test (not by a variable the hook sets), and the harness `afterEach` calls
+`MockGitHub.dispose()` (held and later requests fail at once), `await resetRunSync()` (waits for the sync they belonged to),
+resets the services, the runtime and the token, and deletes the test database. The Settings tests need the global
+IndexedDB (`import 'fake-indexeddb/auto'`, for Dexie's live queries); their waits use `WAIT`/`within`/`waitFor` from
+`src/features/sync/testing.tsx`, so none depends on a global Testing Library timeout. Slowing every request by 150 ms is a
+quick way to find a timing assumption.
+
+**Browser check.** `e2e/sync.spec.ts` (`E2E_CHANNEL=chrome npx playwright test e2e/sync.spec.ts` after `npm run build`; not
+part of `check` or CI, like the other e2e specs, §14) runs the **production build** in Chrome with `api.github.com`
+answered by the same `MockGitHub` through `page.route`: the instructions, the checks, a first sync, a changed record
+sent by "Sincronizează acum", the automatic sync that a fresh page load starts by itself, a repository that turned
+public being refused, disconnecting, and the passphrase flow (encrypted in the real IndexedDB, locked after a restart).
+It also fails on any console error or failed request, so the CSP is part of what it checks. A repository on the real
+GitHub was **not** available to the authors: the README lists what to check by hand.
 
 Assumptions about GitHub that only a real token can confirm: an empty repository answers 409 to Git Data calls and
 accepts a Contents `PUT` as its first commit; blob content comes back as base64 with line breaks; the CORS policy of
