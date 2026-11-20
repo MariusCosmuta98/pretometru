@@ -1125,6 +1125,24 @@ splits it with `splitManifest` and the rules of `src/pwa/offline-rules.ts`:
   while the browser is offline, the add-receipt screen says that the engine is not on the device yet and points at that
   card, instead of "try a clearer photo".
 
+### The two notices (`src/pwa/UpdatePrompt.tsx`)
+
+Two different things share the fixed card above the bottom navigation, and they behave differently on purpose:
+
+- **"Aplicația poate fi folosită și fără internet"** only informs (once, when the first install finishes). It is fixed
+  where the last controls of a long screen end up: at 412 × 839 it covered "Șterge bonul" at the end of a receipt review
+  and swallowed the tap until it was dismissed by hand. So it has nothing to press: it ignores pointer events
+  (`pointer-events-none`, a tap reaches what is under it), takes no focus, and ends after 8 s (`OFFLINE_NOTICE_MS`) or at the
+  first touch or key press (a capturing listener, so it is gone before the page reacts). Until then it still draws over the
+  lower part of those controls: it takes no tap, but it is not invisible. The same fact stays in Settings, "Offline și
+  stocare". `AppLayout` is untouched.
+- **"Este disponibilă o versiune nouă a aplicației"** is a question and stays one: "Actualizează" and "Închide", no timer,
+  and nothing but "Actualizează" activates the new worker (`updateServiceWorker(true)`, which sends `SKIP_WAITING`).
+  It does cover the bottom of the page until the user answers; that is the explicit choice the update behaviour promises.
+
+`src/pwa/register.ts` re-exports `useRegisterSW` from `virtual:pwa-register/react`, a module that exists only in the build,
+so that `UpdatePrompt.test.tsx` can replace it.
+
 ### The build guard (`config/offline-guard.ts`)
 
 It runs on the final Workbox manifest (`manifestTransforms`), so `npm run build` fails, and says what to change, when
@@ -1186,6 +1204,7 @@ Statistics screens), so nothing binary is committed.
 | `engines.spec.ts` | a PDF and a photo (OCR, then the Lidl parser) import offline after the first use of each engine, and after "Descarcă acum" with no earlier use; without either, the error names the cause |
 | `share-target.spec.ts` | Chromium reports no manifest or installability errors; a share POST imports (also offline); several files are listed; an empty or expired share leaves the screen usable |
 | `update.spec.ts` | an update installs in the background, the page and a reload stay on the old version until "Actualizează", the engine caches survive, the new version works offline |
+| `offline-notice.spec.ts` | on a 412 × 839 phone, with the first install held until the end of a receipt review: the "works offline" notice overlaps "Șterge bonul" yet a real tap on the covered part reaches the button (and ends the notice); a key press ends it too and it has no control to focus. The new-version prompt keeps its explicit choice (`UpdatePrompt.test.tsx`, `update.spec.ts`) |
 | `persistence.spec.ts` | state and retry in Settings; the ask happens once after the first confirmed receipt and later visits do not even load the watcher |
 | `admin.spec.ts` | Settings shows the Categorii, Magazine and Copie de siguranță cards and both screens open; an export downloads a dated `*.pretometru-backup.json` that imports back (preview, merge, replace after its question; a newer format and a non-backup are refused in Romanian) with no request leaving the origin and no console or CSP error; deleting a category moves its products (the product list shows them in the new one); merging two stores moves the receipts (§15) |
 | `dashboard.spec.ts` | Home and Statistics (§5e) with the clock fixed at 20.11.2026: the first-run state on both; the numbers of a seeded device (this month against the previous one, categories with the voucher row, last receipts with a draft and a future date, a price increase) and links to the review and the product; the bars are drawn under the CSP of the build; Statistics over 6 months, 3 months and "Tot" with the future receipt, offline and with no failed request or script error (`support/dashboard-seed.ts` writes the receipts) |
