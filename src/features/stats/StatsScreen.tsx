@@ -5,6 +5,7 @@ import { buttonPrimary, card, noticeClass } from '@/ui/controls';
 import { formatCount, formatMonth } from '@/ui/insights/format';
 import { Failure, Loading } from '@/ui/insights/notices';
 import { useDb, useDbQuery } from '@/ui/insights/useLive';
+import { useToday } from '@/ui/insights/useToday';
 import { IncreasesCard } from './IncreasesCard';
 import { PeriodPicker } from './PeriodPicker';
 import {
@@ -43,8 +44,8 @@ function Empty() {
   );
 }
 
-/** Statistici: spending by month, category and store over a chosen period, and the price increases. */
-export function Component() {
+/** Statistici of the day: a new day (the app came back after midnight) starts it over with a fresh clock. */
+function Stats() {
   const [params, setParams] = useSearchParams();
   const choice = parsePeriod(params.get('perioada'));
   const query = useCallback((db: PretometruDB) => loadStats(db, choice), [choice]);
@@ -80,4 +81,10 @@ export function Component() {
       <IncreasesCard data={data} db={database.status === 'ready' ? database.value : undefined} />
     </div>
   );
+}
+
+/** Statistici: spending by month, category and store over a chosen period, and the price increases. */
+export function Component() {
+  const day = useToday();
+  return <Stats key={day} />;
 }

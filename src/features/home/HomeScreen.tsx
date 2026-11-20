@@ -4,6 +4,7 @@ import { noticeClass } from '@/ui/controls';
 import { formatCount } from '@/ui/insights/format';
 import { Failure, Loading } from '@/ui/insights/notices';
 import { useDbQuery } from '@/ui/insights/useLive';
+import { useToday } from '@/ui/insights/useToday';
 import { CategoryCard } from './CategoryCard';
 import { FirstRun } from './FirstRun';
 import { IncreasesCard } from './IncreasesCard';
@@ -40,8 +41,8 @@ function Dashboard({ data }: { data: HomeData }) {
   );
 }
 
-/** Acasă: spending this month and per category, the last receipts and the biggest price increases. */
-export function Component() {
+/** The dashboard of the day: a new day (the app came back after midnight) starts it over with a fresh clock. */
+function Home() {
   const home = useDbQuery(loadNow);
 
   if (home.status === 'error') {
@@ -50,4 +51,10 @@ export function Component() {
   if (home.status === 'loading') return <Loading what="datele" />;
   if (home.value.recent.count === 0) return <FirstRun />;
   return <Dashboard data={home.value} />;
+}
+
+/** Acasă: spending this month and per category, the last receipts and the biggest price increases. */
+export function Component() {
+  const day = useToday();
+  return <Home key={day} />;
 }

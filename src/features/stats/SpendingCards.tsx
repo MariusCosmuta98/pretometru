@@ -15,7 +15,9 @@ function periodLabel({ from, to }: PeriodSpending): string {
 
 /** A whole-percent share of `part` in `whole`, as the text of a detail line; nothing for a part that is not a share. */
 function share(part: number, whole: number): string | undefined {
-  return part > 0 && whole > 0 ? `${roundDiv(part * 100, whole)}%` : undefined;
+  if (!(part > 0) || !(whole > 0)) return undefined;
+  const percent = roundDiv(part * 100, whole);
+  return percent === 0 ? '<1%' : `${percent}%`;
 }
 
 /** What was paid in the period, and in how many receipts. */

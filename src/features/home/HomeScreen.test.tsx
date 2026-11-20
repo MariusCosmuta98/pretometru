@@ -233,6 +233,31 @@ describe('Home: against the previous month', () => {
   });
 });
 
+describe('Home: a new day', () => {
+  it('reads "this month" again when the app comes back after the month changed', async () => {
+    const db = await resetAppDb();
+    await saveGroundTruth(db, 'mega-image-2026-11-03');
+    await savePurchase(db, {
+      chain: 'lidl',
+      purchasedAt: '2026-12-02',
+      lines: [{ lineTotalBani: 1000 }],
+    });
+    renderHome();
+    const november = await screen.findByRole('region', { name: /Luna aceasta/ });
+    expect(november.textContent).toContain('noiembrie 2026');
+    expect(november.textContent).toContain('65,86 lei');
+
+    vi.setSystemTime(new Date('2026-12-05T08:00:00Z')); // the installed app was open in the background
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await waitFor(() => {
+      const month = screen.getByRole('region', { name: /Luna aceasta/ });
+      expect(month.textContent).toContain('decembrie 2026');
+      expect(month.textContent).toContain('10,00 lei');
+    });
+  });
+});
+
 describe('Home: drafts', () => {
   it('marks a draft, offers to review it and does not count it', async () => {
     const db = await resetAppDb();

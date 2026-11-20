@@ -47,7 +47,7 @@ export interface SpendingBucket {
 const UNCATEGORIZED: SpendingBucket = {
   kind: 'uncategorized',
   name: UNCATEGORIZED_NAME,
-  icon: '❔',
+  icon: '🏷️',
   color: '#94a3b8',
 };
 

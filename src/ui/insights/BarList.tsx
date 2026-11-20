@@ -58,7 +58,7 @@ export function BarList({
               }}
             />
           </div>
-          {item.compare === undefined ? null : (
+          {item.compare === undefined || item.compare <= 0 ? null : (
             <div
               aria-hidden="true"
               className="mt-1 h-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"

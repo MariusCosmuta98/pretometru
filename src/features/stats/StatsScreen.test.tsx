@@ -11,7 +11,7 @@ import {
   saveRealReceipts,
 } from '@/analytics/spending-testing';
 import { createProduct } from '@/catalog';
-import { SEED_CATEGORIES } from '@/domain';
+import { SEED_CATEGORIES, type Product } from '@/domain';
 import { getSetting } from '@/storage';
 
 const NOW = new Date('2026-11-20T12:00:00Z');
@@ -128,6 +128,7 @@ describe('Statistics: the four real receipts', () => {
     expect(rows).toHaveLength(10);
     expect(rows.at(-1)).toContain('Non-produs');
     expect(rows.at(-1)).toContain('0,70 lei');
+    expect(rows.at(-1)).toContain('<1% din cheltuieli'); // 0,1 %: a share that rounds to nothing is not "0%"
 
     const totals = within(card).getByRole('list', { name: 'Ajustări și total' });
     expect(totals.textContent).toContain('Tichete folosite la plată−20,00 lei');
@@ -196,6 +197,23 @@ describe('Statistics: the four real receipts', () => {
     expect(summary.textContent).toContain('iunie 2026 – noiembrie 2026');
   });
 
+  it('moves the period to the new month when the app comes back after midnight', async () => {
+    await seed();
+    renderStats();
+    const summary = await screen.findByRole('region', { name: /Perioada/ });
+    expect(summary.textContent).toContain('iunie 2026 – noiembrie 2026');
+
+    vi.setSystemTime(new Date('2026-12-05T08:00:00Z')); // the installed app was open in the background
+    window.dispatchEvent(new Event('focus'));
+
+    await waitFor(() => {
+      const next = screen.getByRole('region', { name: /Perioada/ });
+      expect(next.textContent).toContain('iulie 2026 – decembrie 2026');
+      expect(next.textContent).toContain('679,73 lei'); // the Lidl receipt is no longer in the future
+    });
+    expect(screen.queryByText(/Un bon are data în viitor/)).toBeNull();
+  });
+
   it('says so when the chosen period has no receipt, and keeps the picker', async () => {
     const db = await resetAppDb();
     await saveGroundTruth(db, 'metro-invoice-2026-08-12');
@@ -215,7 +233,7 @@ describe('Statistics: price increases in detail', () => {
    */
   async function seedIncreases(count = 1, dates: [string, string] = ['2026-10-01', '2026-11-07']) {
     const db = await resetAppDb();
-    const products = [];
+    const products: Product[] = [];
     for (let i = 0; i < count; i += 1) {
       products.push(
         await createProduct(db, {
