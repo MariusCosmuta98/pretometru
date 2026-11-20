@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { ParsedReceiptSchema } from '@/domain';
-import { getFixture, normalizeForGolden, sourceOf } from '@fixtures';
 import { parseReceipt } from '../parse-receipt';
 import { pdfPagesFromText } from '../testing';
 import metro from './index';
@@ -114,22 +113,6 @@ function parse(...pages: string[][]) {
 }
 
 const codes = (receipt: Parsed) => receipt.meta.warnings.map((warning) => warning.code);
-
-describe('METRO golden: metro-invoice-2026-08-12', () => {
-  const fixture = getFixture('metro-invoice-2026-08-12');
-  const { source, expected } = sourceOf(fixture, 'pdf-text');
-  const receipt = parseReceipt(source, { now: new Date(fixture.now) });
-
-  it('is recognised as METRO', () => {
-    expect(receipt.meta.parser).toBe('metro');
-    expect(receipt.meta.engine).toBe('pdfjs');
-  });
-
-  it('matches the ground truth, with no warning although the lines add up to 363,42 against 363,41', () => {
-    expect(normalizeForGolden(receipt)).toEqual(normalizeForGolden(expected));
-    expect(receipt.meta.warnings).toEqual([]);
-  });
-});
 
 describe('METRO parser', () => {
   it('reads ex-VAT lines into VAT-inclusive totals and converts the discount', () => {

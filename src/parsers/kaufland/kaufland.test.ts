@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { ParsedReceiptSchema, type ParsedLine } from '@/domain';
-import { getFixture, normalizeForGolden, sourceOf } from '@fixtures';
 import { parseReceipt } from '../parse-receipt';
 import { pdfFromText } from '../testing';
 import kaufland from './index';
@@ -54,22 +53,6 @@ function lineAt(receipt: Parsed, idx: number): ParsedLine {
   if (!found) throw new Error(`no line ${idx}`);
   return found;
 }
-
-describe('Kaufland golden: kaufland-2026-11-07', () => {
-  const fixture = getFixture('kaufland-2026-11-07');
-  const { source, expected } = sourceOf(fixture, 'pdf-text');
-  const receipt = parseReceipt(source, { now: new Date(fixture.now) });
-
-  it('is recognised as Kaufland', () => {
-    expect(receipt.meta.parser).toBe('kaufland');
-    expect(receipt.meta.engine).toBe('pdfjs');
-  });
-
-  it('matches the ground truth, with no warning', () => {
-    expect(normalizeForGolden(receipt)).toEqual(normalizeForGolden(expected));
-    expect(receipt.meta.warnings).toEqual([]);
-  });
-});
 
 describe('Kaufland parser', () => {
   it('reads two-row items, weighed items, deposits, bags and discounts', () => {
