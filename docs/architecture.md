@@ -30,7 +30,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/domain/`                | zod contracts, money/units/names/dates/pricing, ids                  | `domain-storage` (contract changes: contracts.md + schemas + fixtures together) |
 | `src/storage/`               | Dexie schema + migrations, repositories, seed, JSON export/import    | `domain-storage`                      |
 | `src/parsers/`               | parser registry, `parseReceipt`, `validateReceipt`, PDF row reconstruction (pure); one folder per store: `kaufland`, `metro` (`parsers-pdf-text`), `lidl`, `mega-image`, generic fallback (`parsers-ocr-text`) | `parsers-pdf-text`, `parsers-ocr-text` |
-| `src/ocr/`                   | Tesseract worker, canvas preprocessing, crops, "paste text"          | `ocr-pipeline`                        |
+| `src/ocr/`                   | Tesseract.js worker (same-origin assets), pixel preprocessing, line crops; "paste text" needs no engine | `ocr-pipeline`                        |
 | `src/import/`                | file -> engine -> parser -> `ParsedReceipt` -> storage orchestration | `import-review-ui`                    |
 | `src/import/pdf/`            | pdf.js adapter: `extractPdfText(ArrayBuffer)` -> `ReceiptSource`; the only importer of `pdfjs-dist`, worker bundled locally and loaded lazily | `parsers-pdf-text` (the rest of `src/import/` is `import-review-ui`) |
 | `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), auto-categories, merge/split (§5a) | `catalog-matching`                    |
@@ -380,3 +380,46 @@ changes; a test fails on duplicate ids or a version that is not semver.
   be found is `grandTotalBani: 0` (see the warning notes in `contracts.md`). Warning messages are Romanian.
 - Tests: a golden test per `tests/fixtures/<store>/` plus small synthetic cases next to the parser. `makeParsedReceipt()`
   and `makeParsedLine()` (`@/parsers/testing`, test-only) build valid receipts.
+
+## 11. OCR (`src/ocr`, import from `@/ocr`)
+
+React-free logic around Tesseract.js. Importing `@/ocr` costs almost nothing: the engine (a 17 KB loader, a 3.9 MB WASM
+core, 4.6 MB of language data) loads on the first `recognizeImage` call, never with the app shell.
+
+```ts
+import { recognizeImage, cropRegion } from '@/ocr';
+
+const source = await recognizeImage(file, { signal, onProgress: (fraction) => setProgress(fraction) });
+// source: { kind: 'ocr-text', text, lines, confidence, imageSize }, ready for parseReceipt()
+const crop = await cropRegion(file, source.lines![3].bbox, { padding: 6 }); // PNG Blob of one printed row
+```
+
+| Export                                           | Purpose                                                                                       |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `recognizeImage(image, { signal?, onProgress?, preprocessing? })` | photo or screenshot -> `ocr-text` source. `text.split('\n')[i]` is `lines[i]`: one **printed row** per line (fragments that Tesseract's layout analysis split are merged), `lines[i].confidence` is 0-100, `lines[i].bbox` is in pixels of the **original** image (EXIF rotation applied), `confidence` is the page mean, `imageSize` the original size |
+| `cropRegion(image, bbox, { padding? })`          | cuts a box (original-image pixels, clipped to the image) out of the original as a PNG, for review crops |
+| `OcrError` (`code`: `DECODE_FAILED`, `ENGINE_FAILED`, `EMPTY_REGION`) | what the module throws; an aborted call rejects with the signal's `AbortError` instead     |
+| `ocrEngine.dispose()`                            | terminates the worker now (it also stops by itself after 60 s without work)                   |
+| `DEFAULT_PREPROCESS`, `PreprocessOptions`        | the tunable preprocessing (see below)                                                          |
+
+How it works:
+
+- **Preprocessing** (`preprocess.ts`, pure typed-array code: the same under Node): pick the cleanest colour channel
+  (`'auto'` = best ink/paper separation; the Mega Image photo reads best in red, a screenshot in any), bilinear upscale
+  (3x, reduced so the result stays under 12 megapixels: iOS Safari canvases stop at about 16.7), 1st-99th percentile
+  contrast stretch, Otsu threshold. Photos above 16 megapixels are shrunk before their pixels are read. The result goes
+  to Tesseract as a PNG written by `png.ts` (stored deflate blocks: no compressor, identical in every runtime).
+- **Engine** (`engine.ts`): one LSTM-only worker for `ron+eng`, page segmentation mode 6 (one block, which keeps
+  "name ..... price" together), started lazily, reused between calls, terminated when idle or **aborted** (the only way
+  to cancel a running job). Jobs run one at a time. `onProgress` is 0..1 and never decreases.
+- **Same origin**: the worker script, the three LSTM-only core variants (Tesseract.js picks relaxed SIMD, SIMD or plain by
+  feature detection) and `ron`/`eng` `traineddata.gz` are served from `<base>ocr/` (`worker.min.js`, `core/*.wasm.js`,
+  `lang/*.traineddata.gz`). `config/ocr-assets.ts` copies them from `node_modules` at build time (no binaries in git) and
+  serves them in the dev server; the names are stable, not hashed. Tesseract.js's own default CDN paths are never used
+  (`createWorker` always gets explicit paths, `cacheMethod: 'none'`). The existing CSP is enough
+  (`worker-src 'self' blob:`, `script-src 'wasm-unsafe-eval'`); verified in headless Chrome against the production
+  build: every request goes to the site's own origin and no policy violation is reported.
+- **Offline**: `ocr/**` is excluded from the Workbox precache (about 16 MB). `pwa-offline-share` should cache it at run
+  time (cache-first by URL); Tesseract.js's IndexedDB cache is off so the files are not stored twice.
+- Tests are Node-only: pure preprocessing/PNG/row merging, the worker host with a fake factory, and a real Vite build of
+  `ocrAssetsPlugin` (`config/ocr-assets.test.ts`). The browser parts (canvas decode, crop) are covered by a manual check.

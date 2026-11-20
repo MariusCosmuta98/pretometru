@@ -1,7 +1,7 @@
 import type { Page, PSM } from 'tesseract.js';
 import { OCR_LANGUAGES, ocrAssetUrls, type OcrAssetUrls } from './assets';
 
-export interface EngineConfig extends OcrAssetUrls {
+export interface EngineConfig extends Partial<OcrAssetUrls> {
   /** Tesseract language codes joined with `+`. */
   languages: string;
   /** Page segmentation mode; `'6'` = one uniform block of text, which keeps a printed row together. */
@@ -130,14 +130,20 @@ export function createEngineHost(factory: EngineFactory, { idleMs = 60_000 } = {
   };
 }
 
-/** Tesseract.js worker, LSTM engine only, with every file loaded from our own origin. */
+/**
+ * Tesseract.js worker, LSTM engine only. In the browser every file comes from our own origin
+ * (`defaultEngineConfig`); under Node (tests, the benchmark) the paths are left out and
+ * Tesseract.js loads its own worker and core, with `langPath` pointing at a local folder.
+ */
 export const createTesseractEngine: EngineFactory = async (config, onStatus) => {
   // Lazy: the engine (and its 60 KB loader) must not weigh on the app shell.
   const { createWorker, OEM } = await import('tesseract.js');
+  const { workerPath, corePath, langPath } = config;
   const worker = await createWorker(config.languages, OEM.LSTM_ONLY, {
-    workerPath: config.workerPath,
-    corePath: config.corePath,
-    langPath: config.langPath,
+    // Passing `undefined` would override Tesseract.js's own defaults, so only set what is given.
+    ...(workerPath && { workerPath }),
+    ...(corePath && { corePath }),
+    ...(langPath && { langPath }),
     // A plain same-origin worker: no blob: URL, so `worker-src 'self'` is enough.
     workerBlobURL: false,
     // The service worker owns caching; Tesseract's own IndexedDB copy would double the storage.

@@ -1,10 +1,11 @@
 /**
- * Pure pixel pipeline that makes a receipt photo or screenshot easier for Tesseract: pick one colour
- * channel, upscale, stretch the contrast and binarise. It works on plain typed arrays so it runs
- * the same in the browser, in a worker and under Node (the local benchmark).
+ * Pure pixel pipeline that makes a receipt photo or screenshot easier for Tesseract: pick the
+ * cleanest colour channel, upscale, stretch the contrast and binarise. It works on plain typed
+ * arrays so it runs the same in the browser, in a worker and under Node (the local benchmark).
  *
- * Plan §3: green channel + threshold + 3x upscale raised the OCR confidence of the low-resolution
- * Mega Image photo from 21 to 67. Every step is tunable through `PreprocessOptions`.
+ * Plan §3: preprocessing (a single channel + threshold + 3x upscale) raised the OCR confidence of
+ * the low-resolution Mega Image photo from 21 to 67. Every step is tunable through
+ * `PreprocessOptions`; the defaults were chosen with `npm run ocr:bench` on the real samples.
  */
 
 /** 4 bytes per pixel (R, G, B, A), the layout of canvas `ImageData`. */
@@ -22,12 +23,17 @@ export interface GrayImage {
 }
 
 export type Channel = 'green' | 'red' | 'blue' | 'luma' | 'min';
+/** `'auto'` takes the channel in which ink and paper are best separated (`selectChannel`). */
+export type ChannelChoice = Channel | 'auto';
 /** `'otsu'` picks the level automatically, a number is a fixed level 0..255, `'none'` keeps the grey levels. */
 export type Threshold = 'otsu' | 'none' | number;
 
 export interface PreprocessOptions {
-  /** Which colour information becomes the grey image. Green suppresses most coloured watermarks and stamps. */
-  channel: Channel;
+  /**
+   * Which colour information becomes the grey image. A colour cast or a coloured watermark makes
+   * one channel much cleaner than the others (the Mega Image photo reads best in red).
+   */
+  channel: ChannelChoice;
   /** Upscale factor (>= 1). Reduced when the result would exceed `maxPixels`. */
   scale: number;
   /** Largest output area; iOS Safari limits canvases to about 16.7 megapixels, so stay below it. */
@@ -38,7 +44,7 @@ export interface PreprocessOptions {
 }
 
 export const DEFAULT_PREPROCESS: PreprocessOptions = {
-  channel: 'green',
+  channel: 'auto',
   scale: 3,
   maxPixels: 12_000_000,
   stretch: true,
@@ -49,9 +55,14 @@ export interface PreprocessResult {
   image: GrayImage;
   /** The upscale actually applied (`options.scale` reduced to respect `maxPixels`); 1 or more. */
   scale: number;
+  /** The channel that was used (`'auto'` resolved). */
+  channel: Channel;
 }
 
 /** Transparent pixels are composited on white, as a screenshot with an alpha channel would show. */
+const onWhite = (value: number, alpha: number) =>
+  alpha === 255 ? value : Math.round((value * alpha + 255 * (255 - alpha)) / 255);
+
 export function toGray(source: RgbaImage, channel: Channel): GrayImage {
   const { width, height, data } = source;
   const out = new Uint8Array(width * height);
@@ -70,11 +81,74 @@ export function toGray(source: RgbaImage, channel: Channel): GrayImage {
     }
   };
   for (let i = 0, p = 0; i < out.length; i++, p += 4) {
-    const value = pick(data[p] ?? 0, data[p + 1] ?? 0, data[p + 2] ?? 0);
-    const alpha = data[p + 3] ?? 255;
-    out[i] = alpha === 255 ? value : Math.round((value * alpha + 255 * (255 - alpha)) / 255);
+    out[i] = onWhite(pick(data[p] ?? 0, data[p + 1] ?? 0, data[p + 2] ?? 0), data[p + 3] ?? 255);
   }
   return { width, height, data: out };
+}
+
+// Candidates for `'auto'`, in order of preference when two are about equally good.
+const AUTO_CHANNELS = ['green', 'red', 'blue', 'luma'] as const satisfies readonly Channel[];
+const AUTO_TIE = 0.01;
+
+/**
+ * How cleanly the best black/white split divides a histogram: between-class variance over total
+ * variance at Otsu's level (0 = flat, 1 = two perfect spikes).
+ */
+export function separability(bins: Uint32Array): number {
+  let total = 0;
+  let sum = 0;
+  for (let level = 0; level < 256; level++) {
+    total += bins[level]!;
+    sum += level * bins[level]!;
+  }
+  if (total === 0) return 0;
+
+  const split = otsuLevel(bins);
+  let darkCount = 0;
+  let darkSum = 0;
+  for (let level = 0; level <= split; level++) {
+    darkCount += bins[level]!;
+    darkSum += level * bins[level]!;
+  }
+  const lightCount = total - darkCount;
+  if (darkCount === 0 || lightCount === 0) return 0;
+
+  const mean = sum / total;
+  let variance = 0;
+  for (let level = 0; level < 256; level++) variance += bins[level]! * (level - mean) ** 2;
+  const darkMean = darkSum / darkCount;
+  const lightMean = (sum - darkSum) / lightCount;
+  const between = darkCount * lightCount * (darkMean - lightMean) ** 2;
+  return variance === 0 ? 0 : Math.min(1, between / (total * variance));
+}
+
+/**
+ * The channel in which ink and paper separate best. A phone photo of a receipt often has a colour
+ * cast (or a coloured watermark) that blurs the ink in two of the three channels; a clean
+ * greyscale screenshot gives every channel the same score and falls back to green.
+ */
+export function selectChannel(source: RgbaImage): Channel {
+  const pixels = source.width * source.height;
+  const step = Math.max(1, Math.floor(pixels / 1_000_000));
+  const bins = AUTO_CHANNELS.map(() => new Uint32Array(256));
+  const [green, red, blue, luma] = bins as [Uint32Array, Uint32Array, Uint32Array, Uint32Array];
+  const { data } = source;
+  for (let i = 0; i < pixels; i += step) {
+    const p = i * 4;
+    const r = data[p] ?? 0;
+    const g = data[p + 1] ?? 0;
+    const b = data[p + 2] ?? 0;
+    const alpha = data[p + 3] ?? 255;
+    green[onWhite(g, alpha)]!++;
+    red[onWhite(r, alpha)]!++;
+    blue[onWhite(b, alpha)]!++;
+    luma[onWhite(Math.round(0.299 * r + 0.587 * g + 0.114 * b), alpha)]!++;
+  }
+
+  const scores = bins.map(separability);
+  const best = Math.max(...scores);
+  const index = scores.findIndex((score) => score >= best - AUTO_TIE);
+  return AUTO_CHANNELS[index] ?? 'green';
 }
 
 /** Bilinear resampling with pixel-centre alignment, so the edges of the image stay put. */
@@ -201,7 +275,8 @@ export function preprocess(
   overrides: Partial<PreprocessOptions> = {},
 ): PreprocessResult {
   const options = { ...DEFAULT_PREPROCESS, ...overrides };
-  const gray = toGray(source, options.channel);
+  const channel = options.channel === 'auto' ? selectChannel(source) : options.channel;
+  const gray = toGray(source, channel);
 
   const factor = effectiveScale(gray.width, gray.height, options.scale, options.maxPixels);
   const outWidth = Math.max(1, Math.round(gray.width * factor));
@@ -214,5 +289,5 @@ export function preprocess(
       options.threshold === 'otsu' ? otsuLevel(histogram(image)) : Math.round(options.threshold);
     image = binarize(image, level);
   }
-  return { image, scale: outWidth / gray.width };
+  return { image, scale: outWidth / gray.width, channel };
 }

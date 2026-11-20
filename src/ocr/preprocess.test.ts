@@ -7,6 +7,8 @@ import {
   otsuLevel,
   preprocess,
   resizeBilinear,
+  selectChannel,
+  separability,
   stretchContrast,
   toGray,
   type GrayImage,
@@ -103,6 +105,42 @@ describe('effectiveScale', () => {
   });
 });
 
+describe('selectChannel', () => {
+  const paper: [number, number, number] = [250, 250, 250];
+  const ink: [number, number, number] = [20, 20, 20];
+  const redStamp: [number, number, number] = [250, 100, 100];
+  const mix = (...parts: Array<[[number, number, number], number]>) =>
+    parts.flatMap(([pixel, count]) => Array.from({ length: count }, () => pixel));
+
+  it('measures how two-sided the histogram is', () => {
+    const spikes = new Uint32Array(256);
+    spikes[20] = 50;
+    spikes[250] = 50;
+    const spread = new Uint32Array(256).fill(4);
+    expect(separability(spikes)).toBeGreaterThan(0.99);
+    expect(separability(spread)).toBeLessThan(0.8);
+    expect(separability(new Uint32Array(256))).toBe(0);
+    const flat = new Uint32Array(256);
+    flat[90] = 10;
+    expect(separability(flat)).toBe(0);
+  });
+
+  it('prefers the channel in which a colour cast or stamp disappears', () => {
+    const pixels = mix([paper, 60], [ink, 20], [redStamp, 20]);
+    expect(selectChannel(rgba(10, 10, pixels))).toBe('red');
+  });
+
+  it('falls back to green when every channel is equally good (greyscale screenshots)', () => {
+    expect(selectChannel(rgba(10, 10, mix([paper, 80], [ink, 20])))).toBe('green');
+  });
+
+  it('is what preprocess uses by default, and reports the channel it picked', () => {
+    const image = rgba(10, 10, mix([paper, 60], [ink, 20], [redStamp, 20]));
+    expect(preprocess(image).channel).toBe('red');
+    expect(preprocess(image, { channel: 'blue' }).channel).toBe('blue');
+  });
+});
+
 describe('preprocess', () => {
   // dark "ink" cross on white paper, with a red stamp that only the red channel can ignore
   const ink: [number, number, number] = [10, 10, 10];
@@ -122,9 +160,19 @@ describe('preprocess', () => {
   });
 
   it('keeps grey levels when the threshold is "none" and honours a fixed level', () => {
-    const smooth = preprocess(source, { scale: 1, threshold: 'none', stretch: false });
+    const smooth = preprocess(source, {
+      channel: 'green',
+      scale: 1,
+      threshold: 'none',
+      stretch: false,
+    });
     expect([...smooth.image.data]).toEqual([10, 250, 90, 250]);
-    const fixed = preprocess(source, { scale: 1, threshold: 100, stretch: false });
+    const fixed = preprocess(source, {
+      channel: 'green',
+      scale: 1,
+      threshold: 100,
+      stretch: false,
+    });
     expect([...fixed.image.data]).toEqual([0, 255, 0, 255]);
   });
 
