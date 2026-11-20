@@ -5,12 +5,18 @@
  */
 import {
   cleanup,
-  configure,
   fireEvent,
   render,
   screen,
-  waitFor,
-  within,
+  waitFor as waitForDefault,
+  within as withinDefault,
+  type BoundFunctions,
+  type ByRoleMatcher,
+  type ByRoleOptions,
+  type Matcher,
+  type queries,
+  type SelectorMatcherOptions,
+  type waitForOptions,
 } from '@testing-library/react';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -32,9 +38,36 @@ import { makeWorld, type MockGitHub } from '@/sync/testing';
 export const NOW = new Date('2026-11-20T12:00:00.000Z');
 export const SECTION = 'Sincronizare GitHub';
 
-// A sync is a chain of async steps (IndexedDB, SHA-1, the in-memory GitHub): give them room when
-// several test files run at once on a small or busy machine.
-configure({ asyncUtilTimeout: 10_000 });
+/**
+ * How long the section may take to show the result of a sync or of a stored change: a chain of
+ * async steps (IndexedDB, SHA-1, the in-memory GitHub, a live query, a render) that a busy CI
+ * machine can stretch. Given to every wait that depends on one, so that no test relies on the
+ * Testing Library default, or on a global setting somebody else may change.
+ */
+export const WAIT = { timeout: 15_000 };
+
+type Queries = BoundFunctions<typeof queries>;
+
+/** Testing Library's `waitFor`, with `WAIT` unless the call says otherwise. */
+export const waitFor: typeof waitForDefault = (callback, options) =>
+  waitForDefault(callback, { ...WAIT, ...options });
+
+/** Testing Library's `within`, whose `findBy…` queries wait for `WAIT` unless the call says otherwise. */
+export function within(element: HTMLElement): Queries {
+  const found = withinDefault(element);
+  return {
+    ...found,
+    findByText: (text: Matcher, options?: SelectorMatcherOptions, waitOptions?: waitForOptions) =>
+      found.findByText(text, options, { ...WAIT, ...waitOptions }),
+    findByRole: (role: ByRoleMatcher, options?: ByRoleOptions, waitOptions?: waitForOptions) =>
+      found.findByRole(role, options, { ...WAIT, ...waitOptions }),
+    findByLabelText: (
+      text: Matcher,
+      options?: SelectorMatcherOptions,
+      waitOptions?: waitForOptions,
+    ) => found.findByLabelText(text, options, { ...WAIT, ...waitOptions }),
+  } as Queries;
+}
 
 const present = <T,>(value: T | undefined, what: string): T => {
   if (value === undefined) throw new Error(`${what} is not ready yet`);
@@ -67,12 +100,16 @@ export function syncHarness() {
     github = await makeWorld();
     install();
   });
-  afterEach(() => {
+  afterEach(async () => {
+    // End the world first: a request a failed test left held fails now, so the sync it belongs to
+    // ends and can neither block nor disturb the next test.
+    github?.dispose();
+    await resetRunSync();
     cleanup();
     resetSyncServices();
     lockToken();
     resetSyncRuntime();
-    resetRunSync();
+    await db?.delete();
     // Nothing the section sent may be something a browser would have blocked.
     expect(github?.violations ?? []).toEqual([]);
   });

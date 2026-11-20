@@ -75,7 +75,19 @@ export function runSync(): Promise<SyncResult> {
   return inFlight;
 }
 
-/** Forgets a sync that is still running (tests: one that hangs must not block the next test). */
-export function resetRunSync(): void {
+/** Forgets a sync that is still running (tests): waits a moment for it to end, then lets the next one start. */
+export async function resetRunSync(): Promise<void> {
+  const running = inFlight;
   inFlight = undefined;
+  if (running === undefined) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const patience = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, 2_000);
+  });
+  await Promise.race([running.then(noop, noop), patience]);
+  clearTimeout(timer);
+}
+
+function noop(): void {
+  // nothing to do
 }

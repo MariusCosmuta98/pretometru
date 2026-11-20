@@ -117,6 +117,12 @@ export class MockGitHub {
   private readonly faults: Array<Interception<MockReply>> = [];
   private readonly hooks: Array<Interception<() => void | Promise<void>>> = [];
   private offline = false;
+  private disposed = false;
+  private wake: () => void = () => undefined;
+  // Settles when the test is over: a request held by a hook is let go then.
+  private readonly disposal = new Promise<void>((resolve) => {
+    this.wake = resolve;
+  });
   private treeLimit = Number.POSITIVE_INFINITY;
   private commitCounter = 0;
   private clock = Date.parse('2026-11-20T10:00:00.000Z');
@@ -172,6 +178,17 @@ export class MockGitHub {
   setOffline(value: boolean): this {
     this.offline = value;
     return this;
+  }
+
+  /**
+   * Ends the test's world: a request that a hook is holding is let go and fails, and every later
+   * request fails too, so that a sync a failed test left behind ends instead of blocking the next test.
+   */
+  dispose(): void {
+    this.disposed = true;
+    this.hooks.length = 0;
+    this.faults.length = 0;
+    this.wake();
   }
 
   /** Lists at most `entries` files per tree and reports the rest as truncated. */
@@ -248,7 +265,7 @@ export class MockGitHub {
   // --- the HTTP surface ------------------------------------------------------------------------
 
   readonly fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (this.offline) throw new TypeError('Failed to fetch');
+    if (this.offline || this.disposed) throw new TypeError('Failed to fetch');
 
     const request = new Request(input, init);
     const url = new URL(request.url);
@@ -268,7 +285,11 @@ export class MockGitHub {
 
     const key = `${method} ${url.pathname}`;
     const hook = this.take(this.hooks, key);
-    if (hook) await hook();
+    if (hook) {
+      await Promise.race([hook(), this.disposal]);
+      // The test ended while the request was held: it fails like one from a closed page.
+      if (this.disposed) throw new TypeError('Failed to fetch');
+    }
 
     const fault = this.take(this.faults, key);
     let response: Response;

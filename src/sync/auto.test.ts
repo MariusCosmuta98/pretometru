@@ -92,13 +92,15 @@ beforeEach(async () => {
     passphraseIterations: 1000,
   });
 });
-afterEach(() => {
+afterEach(async () => {
   auto?.stop();
   auto = undefined;
+  github.dispose();
+  await resetRunSync();
   resetSyncServices();
   lockToken();
   resetSyncRuntime();
-  resetRunSync();
+  await db.delete();
   expect(github.violations).toEqual([]);
 });
 

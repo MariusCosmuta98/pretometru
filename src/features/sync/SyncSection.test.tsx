@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 // Dexie's live queries need the global IndexedDB, as in the product screens' tests.
 import 'fake-indexeddb/auto';
-import { act, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createRecord, getKeyValue } from '@/storage';
 import { getSyncServices, lockToken, readConnection, runSync, saveConnection } from '@/sync';
 import { at, FULL_NAME, makeDevice, OWNER, REPO, seedSample, TOKEN } from '@/sync/testing';
 import { formatWhen } from './format';
-import { press, syncHarness, typeInto } from './testing';
+import { press, syncHarness, typeInto, waitFor, within } from './testing';
 
 vi.setConfig({ testTimeout: 30_000 });
 

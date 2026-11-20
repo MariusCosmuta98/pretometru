@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRecord, ensureSeed, type PretometruDB } from '@/storage';
 import { createTestDb } from '@/storage/testing';
 import { lockToken, saveConnection, unlockToken } from './connection';
+import { SyncError } from './errors';
 import { resetRunSync, runSync } from './run';
 import { getSyncRuntime, resetSyncRuntime, type SyncRuntime } from './runtime';
 import { resetSyncServices, setSyncServices } from './services';
@@ -25,11 +26,13 @@ beforeEach(async () => {
     ...connecting,
   });
 });
-afterEach(() => {
+afterEach(async () => {
+  github.dispose();
+  await resetRunSync();
   resetSyncServices();
   lockToken();
   resetSyncRuntime();
-  resetRunSync();
+  await db.delete();
   expect(github.violations).toEqual([]);
 });
 
@@ -154,5 +157,26 @@ describe('runSync', () => {
   it('reports a database that cannot be opened', async () => {
     setSyncServices({ getDb: () => Promise.reject(new Error('blocked')) });
     await expect(runSync()).rejects.toMatchObject({ code: 'STORAGE' });
+  });
+
+  it('lets go of a sync whose request is held when the world ends, so the next sync is not blocked', async () => {
+    await connect();
+    // A request that is never answered: what a test leaves behind when it fails before it releases it.
+    github.before(/^GET .*\/git\/ref\//, () => new Promise<void>(() => undefined));
+    const stuck = runSync().then(
+      () => 'finished',
+      (error: unknown) => (error instanceof SyncError ? error.code : 'unexpected'),
+    );
+    await vi.waitFor(() => expect(getSyncRuntime().running).toBe(true));
+
+    github.dispose();
+    await resetRunSync();
+
+    expect(await stuck).toBe('NETWORK');
+    expect(getSyncRuntime().running).toBe(false);
+    // A new world, and a sync that is not queued behind the one that hung.
+    github = await makeWorld();
+    setSyncServices({ getDb: () => Promise.resolve(db), fetch: github.fetch, ...connecting });
+    await expect(runSync()).resolves.toMatchObject({ firstSync: true });
   });
 });
