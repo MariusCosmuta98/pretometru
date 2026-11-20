@@ -30,6 +30,8 @@ export interface PagesServerOptions {
   base?: string;
   /** 0 picks a free port. */
   port?: number;
+  /** Holds the worker's precache fetch of index.html without blocking the initial page navigation. */
+  waitForShellPrecache?: Promise<void>;
 }
 
 /**
@@ -43,6 +45,7 @@ export function startPagesServer({
   root,
   base = '/pretometru/',
   port = 0,
+  waitForShellPrecache,
 }: PagesServerOptions): Promise<PagesServer> {
   const directory = resolve(root);
 
@@ -56,6 +59,7 @@ export function startPagesServer({
       if (!pathname.startsWith(base)) return notFound();
 
       const relative = decodeURIComponent(pathname.slice(base.length)) || 'index.html';
+      if (pathname === `${base}index.html`) await waitForShellPrecache;
       const file = normalize(join(directory, relative));
       if (!file.startsWith(directory + sep)) return notFound();
 

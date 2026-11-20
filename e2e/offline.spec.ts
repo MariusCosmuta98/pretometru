@@ -1,8 +1,38 @@
 import { expect, test, type Page } from '@playwright/test';
 import { BASE, cacheNames, openApp, visitFresh, watchForProblems } from './support/app.ts';
+import { startPagesServer } from './support/pages-server.ts';
 import { seedPriceHistory } from './support/seed.ts';
 
 test.describe('the production build offline', () => {
+  test('Settings becomes ready and offers the engines on first visit, without reloading', async ({
+    page,
+  }) => {
+    let releasePrecache = () => {};
+    const waitForShellPrecache = new Promise<void>((resolve) => {
+      releasePrecache = resolve;
+    });
+    const server = await startPagesServer({ root: 'dist', waitForShellPrecache });
+    try {
+      await page.goto(server.url('#/setari'));
+      const section = page.getByRole('region', { name: 'Offline și stocare' });
+      await expect(section.getByText(/^Citirea fără internet nu poate fi pregătită/)).toBeVisible();
+      const download = section.getByRole('button', { name: /^Descarcă acum/ });
+      await expect(download).toHaveCount(0);
+      expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
+      const timeOrigin = await page.evaluate(() => performance.timeOrigin);
+      releasePrecache();
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+      await expect
+        .soft(section.getByText(/^Aplicația pornește și funcționează și fără internet/))
+        .toBeVisible();
+      await expect.soft(download).toBeEnabled();
+      expect(await page.evaluate(() => performance.timeOrigin)).toBe(timeOrigin);
+    } finally {
+      releasePrecache();
+      await server.close();
+    }
+  });
+
   test('the install step downloads the shell, not the engines', async ({ page }) => {
     await openApp(page);
 

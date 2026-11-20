@@ -15,7 +15,7 @@ const READINESS: Record<OfflineReadiness, string> = {
 
 export default function OfflineSection() {
   const env = useOfflineEnv();
-  const { value: readiness } = useRead(env.readiness);
+  const { value: readiness } = useRead(env.readiness, env.subscribeToController);
 
   return (
     <div className="space-y-5">

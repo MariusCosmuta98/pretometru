@@ -1172,7 +1172,7 @@ Statistics screens), so nothing binary is committed.
 
 | Spec | Proves |
 | --- | --- |
-| `offline.spec.ts` | the install stores the shell and not the engines; every navigation route, a receipt, a product with its chart and an unknown route render offline with IndexedDB data and no failed request or script error; a returning visit opens offline; the camera input |
+| `offline.spec.ts` | the install stores the shell and not the engines; Settings updates its readiness and download action when a late worker takes control on the first visit, with no reload; offline routes render with IndexedDB data and no failed request or script error; a returning visit opens offline; the camera input |
 | `engines.spec.ts` | a PDF and a photo (OCR, then the Lidl parser) import offline after the first use of each engine, and after "Descarcă acum" with no earlier use; without either, the error names the cause |
 | `share-target.spec.ts` | Chromium reports no manifest or installability errors; a share POST imports (also offline); several files are listed; an empty or expired share leaves the screen usable |
 | `update.spec.ts` | an update installs in the background, the page and a reload stay on the old version until "Actualizează", the engine caches survive, the new version works offline |

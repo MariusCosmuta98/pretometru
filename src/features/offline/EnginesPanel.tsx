@@ -30,7 +30,7 @@ const UNAVAILABLE: Record<OfflineReadiness, string> = {
 export function EnginesPanel({ readiness }: { readiness: OfflineReadiness | undefined }) {
   const env = useOfflineEnv();
   const read = useCallback(async () => ({ engines: await env.engines.status() }), [env]);
-  const { value, refresh } = useRead(read);
+  const { value, refresh } = useRead(read, env.subscribeToController);
   const [job, setJob] = useState<Job>();
 
   const engines = (value?.engines ?? []).filter((engine) => engine.files > 0);
