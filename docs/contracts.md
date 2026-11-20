@@ -154,7 +154,8 @@ interface ReceiptParser {
   address, `purchasedAt` the `DATA:dd/mm/yyyy ORA:hh-mm-ss` row; no `documentNo`. Card slip, loyalty and footer rows
   are never read. A quantity line whose product row is unreadable stays as `Produs necunoscut` with `LOW_CONFIDENCE`
   on the line. OCR confuses 0/8 and similar; the digit repair (below) fixes a unit price or a VAT rate misread that way
-  and flags it; a misread name or time stays as the OCR read it. Review: the date is often after today, so
+  and flags it; a misread name stays as the OCR read it, and so does a misread digit of the time (`17-12-38`); a
+  damaged clock is not read at all (the date and time bullet below). Review: the date is often after today, so
   `FUTURE_DATE` must be accepted explicitly before the receipt is confirmed; `REPAIRED_DIGITS` stays listed until the
   user edits or verifies that line; line crops show the printed row while the photo is in memory.
 - **Mega Image** (photo read by OCR, or pasted text; `src/parsers/mega-image`): `name price` then the EAN on the next
@@ -170,6 +171,15 @@ interface ReceiptParser {
   so every specific parser wins. It reads `name total [class]` rows with the quantity above (`qty BUC x price`) or
   inline (`2 x 2,50`) and an EAN row below, `TOTAL` / `Subtotal` and `DATA ... ORA ...`; the chain is `unknown`
   (`UNKNOWN_CHAIN`) and the whole document carries `LOW_CONFIDENCE` (more clearly when the OCR confidence is low).
+- **Date and time in OCR or pasted text** (`src/parsers/plain-text/dates.ts`, shared by the three parsers):
+  `purchasedAt` is the first line with a date and a time, else the first line with a date (`DATA:29/12/2026
+  ORA:17-12-30`, `03.11.26`; letters that OCR reads for digits are accepted). The time is read only from a clock that
+  **stands alone**: `hh:mm` or `hh:mm:ss` (`:` or `-`) that follows a space or its label (`ORA`, `Timp`) and is not
+  glued to other digits or separators, nor runs on into another group. A damaged clock (`ORA:1/-03-04`,
+  `ORA:123:04:05`, `ORA:13:03:04:05`) is never completed from its valid-looking tail (`03-04`, `04:05`): `purchasedAt`
+  stays the bare date and, when a time label followed by digits was printed, a document-level `LOW_CONFIDENCE` says
+  that the time could not be read (an impossible time such as `25:61` is the same). A date that never had a time
+  raises nothing. In the review the time field stays empty for the user to fill in.
 - **OCR digit repair** (`src/parsers/plain-text/repair.ts`, run last by the Lidl, Mega Image and generic parsers):
   only when `SUM_MISMATCH` or `LINE_ARITHMETIC` would fire (a receipt that validates is returned untouched). It looks
   for the fewest corrections of confusable digits (0/8, 5/6/9, 1/7) that make the receipt add up, with the checks of
