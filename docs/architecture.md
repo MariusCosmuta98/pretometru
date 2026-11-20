@@ -11,14 +11,14 @@ it, what may import what, and how to add a screen without touching shared files*
 | Domain     | `src/domain`                | `zod`                                   | React, Dexie, storage, parsers, features, app, ui |
 | Parsers    | `src/parsers`               | domain                                  | React, Dexie, storage, features, app, ui         |
 | Storage    | `src/storage`               | domain, Dexie                           | React, features, app, ui                         |
-| Logic      | `catalog`, `analytics`, `import`, `sync`, `ai`, `ocr` | domain, parsers, storage, each other (no cycles) | features, app, ui (keep them React-free)        |
+| Logic      | `catalog`, `analytics`, `import`, `lists`, `sync`, `ai`, `ocr` | domain, parsers, storage, each other (no cycles) | features, app, ui (keep them React-free)        |
 | UI         | `src/features/<name>`       | everything above, `src/app`, `src/ui`   | **another feature's folder**                     |
 | Shell      | `src/app`                   | `src/ui`; discovers features by glob    | importing features directly                      |
 
 - `src/domain` and `src/parsers` are **pure**: no DOM, IndexedDB, network or clock (inject `now`). They run under
   Node/Vitest. ESLint enforces the import and global-variable bans (`eslint.config.js`).
-- `src/catalog`, `src/analytics` and `src/import` are React-free: ESLint rejects `react`, `react-router` and imports of
-  `@/features`, `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
+- `src/catalog`, `src/analytics`, `src/import` and `src/lists` are React-free: ESLint rejects `react`, `react-router` and
+  imports of `@/features`, `@/app`, `@/ui` or `@/pwa` there (they may use `@/storage`).
 - Features share code only through `src/ui`, `src/domain`, `src/storage` or a logic module, never by reaching into a
   sibling feature.
 - Path alias: `@/` = `src/` (configured in `tsconfig*.json` and `vite.config.ts`).
@@ -37,13 +37,14 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/import/pdf/`            | pdf.js adapter: `extractPdfText(ArrayBuffer)` -> `ReceiptSource`; the only importer of `pdfjs-dist`, worker bundled locally and loaded lazily | `parsers-pdf-text` (the rest of `src/import/` is `import-review-ui`) |
 | `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), auto-categories, merge/split (§5a) | `catalog-matching`                    |
 | `src/analytics/`             | price observations, unit price, cheapest store, trends (§5b)         | `price-analytics`                     |
+| `src/lists/`                 | shopping lists: list and item storage, cheapest place per item, grouping by store | `shopping-lists`                      |
 | `src/sync/`                  | GitHub sync (LWW + tombstones)                                       | `sync-github`                         |
 | `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
 | `src/pwa/`                   | service worker registration, update prompt, offline/share-target     | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
 | `src/features/home`, `stats` | dashboard and statistics screens                                     | `insights-dashboard` (until then `price-analytics`) |
 | `src/features/add-receipt`, `receipts` | add receipt (files, camera, pasted text, manual), receipt list, review (`bonuri/:receiptId`, §12) | `import-review-ui`                    |
 | `src/features/products`      | products by category, product page (§5c)                             | `catalog-matching`, `price-analytics` |
-| `src/features/lists`         | shopping lists                                                       | `shopping-lists`                      |
+| `src/features/lists`         | shopping lists: overview and list screens                            | `shopping-lists`                      |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
 | `src/ui/`                    | shared presentational components and icons                           | shared (additive edits)               |
