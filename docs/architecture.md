@@ -56,7 +56,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/features/backup`, `categories`, `stores` | Settings sections "Copie de siguranță", "Categorii" and "Magazine"; the routes `/setari/categorii` and `/setari/magazine` (§15) | `backup-categories-stores`            |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
-| `src/ui/`                    | shared presentational components and icons                           | shared (additive edits)               |
+| `src/ui/`                    | shared presentational components, icons, and what the data screens of Settings share: the live-query hooks (`live.ts`), `Loading`/`Failure`, `ConfirmPanel`, `plural` (§15) | shared (additive edits)               |
 | `config/`                    | build-time helpers (CSP plugin, OCR asset copy, the offline guard, §14); Node only, never bundled | `scaffold-pwa`; `ocr-assets*`: `ocr-pipeline`; `offline-guard*`: `pwa-offline-share` |
 | `e2e/`                       | Playwright browser checks of the production build (`npm run e2e`, §14); not part of `check` or CI yet | `pwa-offline-share` (base for `qa-hardening`) |
 | `scripts/`                   | Node scripts: leak check (`check-leaks.ts`), fixture sanitizer; the local OCR benchmark (`ocr-bench.ts`, §11) | `sample-fixtures`; `ocr-bench*` : `ocr-pipeline` |
@@ -103,7 +103,8 @@ export function Component() {
 - A thrown error inside a screen is caught by a boundary **inside** the layout, so navigation stays usable.
 - **Settings sections**: a feature adds a card to the Settings screen with
   `settingsSections: [{ id, title, order, Component: lazy(() => import('./MySection')) }]`; nobody edits
-  `SettingsScreen`. Use `order` < 1000 to appear before "Despre aplicație".
+  `SettingsScreen`. Use `order` < 1000 to appear before "Despre aplicație". A card that is too small for its job links
+  to a route of its own feature (`setari/categorii`, `setari/magazine`, §15), which leads back with "← Setări".
 - New icons go in `src/ui/icons.tsx` (`IconName` union + one glyph).
 - UI strings are Romanian; identifiers, comments and commit messages are English.
 
@@ -1029,7 +1030,8 @@ is unit-tested.
 watcher loads three seconds after the first screen, and not at all once the browser has been asked, so the entry chunk stays
 free of Dexie. The ask is remembered in `localStorage` (`pretometru.storage-persist`: device-local, never exported or synced).
 The Settings card shows the state (active, inactive, unavailable), the space used, whether the app is installed and a
-**manual retry**, and points at the GitHub sync as the copy outside the browser (there is no export-to-file screen yet).
+**manual retry**, and points at the copies outside the browser: the file export ("Copie de siguranță", §15) and the GitHub
+sync (§13).
 Chrome decides by its own heuristics (an installed app is granted) and Firefox asks the user, so a refusal is normal and is
 never repeated on its own.
 
@@ -1068,6 +1070,127 @@ form to it and leave drafts in the add-receipt screen (nothing is confirmed, syn
 ten files of any size, which the importer then refuses above 40 MB). If that ever matters, show the shared files and wait for
 a tap instead of starting the import (`useSharedFiles` in `src/pwa`). An update that changes an engine leaves the new engine
 unstored until it is next used online or fetched from Settings: the old caches are deleted when the new worker activates.
+
+## 15. Backup, categories and stores (`src/admin`, `src/features/backup`, `categories`, `stores`)
+
+The Settings parts of plan §8 that need no network: a **backup file** the user keeps (export and import), and the
+management of **categories** and **stores**. `src/admin` (import from `@/admin`) is React-free logic over the domain and
+storage layers; the three features are thin screens over it. ESLint forbids `fetch`, `XMLHttpRequest`, `WebSocket` and
+`EventSource` in `src/admin` and `src/features/backup` (§1) and the tests stub all four: nothing here touches the network,
+the file is the only way out of the device.
+
+| Module (`src/admin/`)       | What it holds                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `backup.ts`                 | `prepareExport`, `readBackupFile` / `previewBackup`, `applyBackup`, `countLocalData`, `getLastExportAt` / `recordExport`, `backupFileName` |
+| `categories.ts`             | `listCategories`, `addCategory`, `updateCategory`, `moveCategory`, `deleteCategory`, `isSystemCategory`   |
+| `stores.ts`                 | `listStores`, `renameStore`, `mergeStores`, `deleteStore`                                                  |
+| `errors.ts`, `text.ts`      | `AdminError` with a `code` (`ADMIN_ERROR_CODES`; screens turn codes into Romanian), `tidyName`, `nameKey`  |
+| `testing.ts`                | **test-only**: `seededTestDb`, `resetDb` (the shared app database), `addStore`, `addProduct`, `addReceipt` |
+
+### Backup
+
+```ts
+const prepared = await prepareExport(db);            // { fileName, text, bytes, exportedAt, counts, skipped }
+downloadTextFile(prepared.fileName, prepared.text);  // the feature: a Blob URL and a click, no request
+await recordExport(db, prepared.exportedAt);
+
+const read = await readBackupFile(file);             // { ok: true, preview } | { ok: false, refusal }
+if (read.ok) await applyBackup(db, read.preview.backup, 'merge'); // or 'replace'
+```
+
+- **The file** is `pretometru-YYYY-MM-DD.pretometru-backup.json` (the Bucharest day), the format of
+  [`contracts.md`](contracts.md): every record, tombstones included, and the portable settings only. `skipped` lists the
+  stored records that no longer satisfy their schema and were left out; the screen shows them instead of failing.
+- **Last export.** `recordExport` writes the setting `lastExportAt`, which is **not portable**: a fact about this device,
+  never exported or synced, and a `replace` import leaves it alone. The card shows it as a plain line ("Ultima exportare:
+  …", or "Nu ai exportat încă…"): no reminder, colour or counting of days.
+- **Preview.** `previewBackup(text)` is `parseBackup` plus a summary: the format version, `exportedAt`, per kind the live
+  records and the tombstones the file carries, and its warnings. A refusal is a **code**, not a sentence: `not-json`,
+  `not-backup`, `newer-version` (a format above `BACKUP_FORMAT_VERSION` is refused, never imported partly), `invalid`
+  (the validator's English reasons are kept as technical details), `too-large` (above 50 MB, refused without reading the
+  file) and `unreadable`. The validator's wording is English, so the module classifies it: refusals from the file's own
+  header, and the dangling-reference warnings (`3 receipt(s) reference a store that is not in the backup`) into
+  `{ kind: 'dangling', count, subject, target }`. `backup.test.ts` pins every combination against the real validator, so a
+  reworded warning fails a test instead of reaching the screen in English. A UTF-8 byte order mark is accepted.
+- **Import.** `applyBackup` is `importBackup` plus the summary the screen shows: per kind how many records were added,
+  updated or already up to date, and how many settings of the file were ignored for not being portable. `merge`
+  (the default) keeps what the device holds and takes, record by record, the copy changed last (a newer tombstone
+  deletes, a later edit beats an earlier deletion); `replace` makes the file the data and leaves the device's own
+  settings and sync state (token, key, last export). One transaction: a database that refuses changes nothing.
+- **`replace` and GitHub sync.** Sync merges by last write (§13) and never removes records from the repository, so after
+  a `replace` the next sync can bring back what the repository still holds. The confirmation says so; restoring an old
+  state with sync on is a merge, not a rollback.
+
+**The card "Copie de siguranță"** (`order: 580`, between the sync and the offline cards). Export: what the device holds
+("120 de bonuri, 340 de produse și 3 magazine"), "Exportă datele", the name and size of the file, the records that were
+left out, the last export. Import: a file input (`.json`), then either a refusal in Romanian (with "Detalii tehnice" for a
+damaged file) or the preview (format version, export time, counts per kind and the deletions the file carries, warnings)
+and the choice *Îmbină cu datele de acum (recomandat)* / *Înlocuiește tot*. *Înlocuiește tot* asks "Înlocuiești datele de
+pe acest dispozitiv?": what the device holds now against what the file holds, that it cannot be undone, the sync note
+above, and a button that downloads a copy of the current data first; the confirmation stays disabled until the card knows
+what the device holds. Then a status with the counts. Accessibility: every field is a `<label for>`; the preview heading
+takes focus when it appears, the question puts focus on "Anulează" and Escape cancels, the result heading takes focus;
+refusals and failures are `role="alert"`, results `role="status"`.
+
+### Categories (`src/admin/categories.ts`, the screen `/setari/categorii`, card `order: 100`)
+
+- `listCategories(db)`: the live categories in the user's order, the system one last, each with the live products and lines
+  that use it. `addCategory`: the name is tidied (trimmed, one space) and unique among live categories (`Băuturi` equals
+  `bauturi`), the icon is **one emoji** (a single grapheme that is pictographic, a flag or a keycap), the colour is
+  `#rrggbb` (stored lower case), the new category goes after the last orderable one (`order` + 10).
+- `updateCategory` goes through `updateRecord`, so the edit is newer than the built-in category (epoch) on every device
+  and `ensureSeed` leaves it; nothing is written when nothing changes. The system category keeps its name (its icon and
+  colour may change).
+- `moveCategory` swaps a category with its neighbour among the orderable ones and numbers them 10, 20, 30... again,
+  writing only those whose number changed, so equal numbers left by two devices heal. The system category stays last.
+- `deleteCategory(db, id, { reassignTo })` is one transaction: its live products and its live lines move to `reassignTo`
+  (a live category that is neither the system one nor the deleted one), which is **mandatory while anything uses it**
+  (`TARGET_REQUIRED`); sub-categories move up to its parent; the category becomes a tombstone (`softDelete`), which is what
+  keeps a deleted built-in category from coming back (`ensureSeed` skips a tombstone, `purgeTombstones` keeps the seed
+  ones). "Non-produs" cannot be deleted, renamed or moved (`SYSTEM_CATEGORY`, checked by flag and by id). Aliases point at
+  products, so they need no change.
+
+### Stores (`src/admin/stores.ts`, the screen `/setari/magazine`, card `order: 200`)
+
+- `listStores(db)`: the live stores by name (Romanian collation) with their live receipts (drafts included).
+- `renameStore` changes the name only. What identifies a store for the importer (chain, branch code and city,
+  `matchesStoreSpec` in `src/import/stores.ts`) stays, so the next receipt of that branch arrives at the same store. For the
+  `unknown` chain the importer also matches the printed name, so renaming such a store means a later receipt under the old
+  printed name creates a store again: merge them.
+- `mergeStores(db, intoId, fromId)` is one transaction: the live receipts of `fromId` (drafts too) get `storeId = intoId`
+  through `updateRecord` (their lines and `linesUpdatedAt` are untouched), then `fromId` becomes a tombstone. The kept store
+  keeps its own name, chain, branch and city; the screen offers the stores of the same chain first. Merge stores that are the
+  same shop: later receipts are matched by chain, branch and city only.
+- `deleteStore` only when no live receipt points at the store (`HAS_RECEIPTS`).
+
+### The screens and what they share
+
+Both routes are reached from their Settings card ("Gestionează categoriile", "Gestionează magazinele") and lead back with
+"← Setări"; they have no navigation entry. Everything destructive asks first, in an inline `ConfirmPanel` whose safe answer
+(or the required `<select>`) has focus and which Escape cancels; the confirm button of a question that needs a choice (the
+category to move to, the store to keep) stays disabled until it is made, and nothing is preselected. A refusal puts focus on
+the field it is about; focus returns to the button that opened a form or a question, goes to the list heading when a row
+leaves, and stays on a move button (or goes to the other one when the row reached the end). The lists follow changes made
+elsewhere (sync, another tab) because they read through a Dexie live query.
+
+`src/ui` got the pieces the three features share: `live.ts` (`useDb`, `useLiveQuery`, `useDbQuery`: the hooks of
+`src/features/products/useLive.ts` and `src/features/lists/useLive.ts`, which keep their own copies), `states.tsx`
+(`Loading`, `Failure`), `ConfirmPanel.tsx` and `plural.ts` (`plural(2, 'produs', 'produse')` is `2 produse`, 20 is `20 de
+produse`).
+
+### Tests and limits
+
+`src/admin/*.test.ts` run against fake-indexeddb: the export -> import round trip in both modes, with tombstones and the
+portable settings only (a token, a key and the last export never travel; a planted non-portable key in a file is
+ignored), last write wins and deletions in a merge, every refusal, every warning `parseBackup` can raise, all-or-nothing
+writes (an invalid stored record stops a category deletion or a store merge and nothing changes), the system category,
+reassignment on deletion, the merge moving receipts and tombstoning the source, and that `fetch`, `XMLHttpRequest`,
+`WebSocket` and `EventSource` are never touched. The screens have jsdom tests like the product and list screens (the
+shared database, `fake-indexeddb/auto`), including the whole app router for the Settings cards and the way back.
+
+Not verified: the download on iOS Safari (a Blob URL and a click on `<a download>`, the portable way) and how each Android
+file manager filters by `accept`; a backup of tens of megabytes on a phone (the file is read and validated on the main
+thread, which blocks for a moment).
 
 ## 16. Optional AI reading, Gemini (`src/ai`, `src/features/ai`)
 

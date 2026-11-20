@@ -77,6 +77,25 @@ te bazezi pe sincronizare, parcurge:
      singur).
 7. Dacă ceva nu merge, notează mesajul și codul erorii (de exemplu `REMOTE_INVALID`).
 
+## Copie de siguranță într-un fișier, categorii și magazine
+
+Independent de sincronizare, **Setări → Copie de siguranță** salvează tot ce ai în aplicație (bonuri, produse,
+categorii, magazine, liste și setările comune) într-un fișier `pretometru-AAAA-LL-ZZ.pretometru-backup.json` și îl poate
+încărca la loc, de exemplu după ce schimbi telefonul sau browserul îți șterge datele.
+
+- **Exportă datele** descarcă fișierul. Se face pe dispozitiv, fără internet. Fișierul conține istoricul cumpărăturilor
+  tale: păstrează-l într-un loc sigur și nu-l pune într-un depozit public. Aplicația îți arată data ultimei exportări, fără
+  să insiste. Tokenul GitHub, cheia Gemini și alte valori ale dispozitivului nu intră niciodată în fișier.
+- **Importă din fișier** îți arată mai întâi ce conține (versiunea formatului, data exportului, câte înregistrări) și abia
+  apoi importă. *Îmbină* (implicit) păstrează ce ai și adaugă ce lipsește; la același element rămâne varianta modificată mai
+  recent. *Înlocuiește tot* șterge datele de pe dispozitiv și le pune pe cele din fișier, după o întrebare clară (poți
+  descărca întâi o copie a datelor de acum). Un fișier făcut de o versiune mai nouă a aplicației este refuzat. Cu
+  sincronizarea GitHub pornită, la următoarea sincronizare pot reapărea date din depozit.
+- **Setări → Categorii**: adaugi, redenumești, colorezi, alegi emoji-ul și ordonezi categoriile; la ștergere alegi în ce
+  categorie se mută produsele. „Non-produs” nu se poate redenumi sau șterge.
+- **Setări → Magazine**: redenumești, unești două magazine care sunt de fapt același (bonurile trec la cel păstrat) și
+  ștergi un magazin fără bonuri.
+
 ## Rulare locală
 
 Cerințe: Node.js `^22.22`, `^24` sau `>=26` (versiunea folosită în CI este în [`.nvmrc`](.nvmrc)) și npm.

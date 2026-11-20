@@ -234,6 +234,19 @@ unknown; compare prices only between lines that have the same `baseUnit`.
 - Deleting a list tombstones the list and its live items with the same instant, and the items of a deleted list are
   never shown.
 
+**Written by the Settings screens** (`src/admin`, docs/architecture.md §15):
+
+- Categories are edited with `updateRecord` and deleted with `softDelete`, so an edit or a deletion is newer than the
+  built-in category (epoch) and wins on every device; a deleted built-in category is not brought back. "Non-produs"
+  (`system: true`) is never renamed, moved or deleted. Deleting a category moves its live products and lines
+  (`categoryId`) to another live, non-system category in the same transaction, and its sub-categories to its own parent. A
+  new category gets `order` = the last orderable one + 10; a move numbers the orderable ones 10, 20, 30... again. Read
+  categories sorted by `order`, then `name`, then `id`, the system one last.
+- A store merge sets `storeId` of the merged store's live receipts to the kept store and tombstones the merged store (its
+  deleted receipts keep pointing at it); a store is deleted only when no live receipt points at it. A rename changes
+  `name` only: chain, branch code and city are what the importer matches a receipt to a store by.
+- `lastExportAt` is a setting that is **not portable** (the instant this device last exported a backup).
+
 **Deviations from plan §6**
 
 - `pricePerBaseBani` is stored as `pricePerBaseMilliBani` (integer milli-bani). Whole bani lose too much precision for
@@ -247,7 +260,8 @@ unknown; compare prices only between lines that have the same `baseUnit`.
 **Backup file (`*.pretometru-backup.json`)**:
 `{ format: 'pretometru-backup', formatVersion: 1, exportedAt, data: { stores, receipts, lines, products, aliases,
 categories, lists, listItems, settings } }`. Tombstones are included. Sync state and settings that are not marked
-`portable` in `SETTING_DEFINITIONS` (tokens, API keys, device values) are never exported or imported. Import is `merge`
+`portable` in `SETTING_DEFINITIONS` (tokens, API keys, device values such as `lastExportAt`) are never exported or
+imported. Import is `merge`
 (the newer `updatedAt` wins per record, a newer tombstone deletes) or `replace`, in one transaction, and afterwards
 reconciles the lines of every touched receipt (`linesUpdatedAt`), because two devices can re-save the same receipt
 with different line sets. A newer `formatVersion` is refused rather than imported lossily. Export leaves out (and
