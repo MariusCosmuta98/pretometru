@@ -25,6 +25,8 @@ export interface HomeData {
   current: PeriodSpending;
   previous: PeriodSpending;
   comparison: SpendingComparison;
+  /** Confirmed receipts dated after this month (in the future): not part of it, counted in their own. */
+  later: { count: number; months: MonthKey[] };
   recent: RecentReceipts;
   /** The biggest price increases seen in the window, at most `INCREASES_LIMIT`. */
   increases: PriceIncrease[];
@@ -42,6 +44,7 @@ export async function loadHome(db: PretometruDB, now: Date = new Date()): Promis
   const receipts = await loadSpendingReceipts(db);
   const current = summarizeSpending(receipts, { from: month, to: month });
   const previous = summarizeSpending(receipts, { from: previousMonth, to: previousMonth });
+  const after = receipts.filter((receipt) => receipt.month > month);
 
   const windowDays = await getSetting(db, 'priceWindowDays');
   const increases = await loadPriceIncreases(db, { now, days: windowDays });
@@ -52,6 +55,7 @@ export async function loadHome(db: PretometruDB, now: Date = new Date()): Promis
     current,
     previous,
     comparison: compareSpending(current, previous),
+    later: { count: after.length, months: [...new Set(after.map((r) => r.month))].sort() },
     recent: await loadRecentReceipts(db, RECENT_LIMIT),
     increases: increases.slice(0, INCREASES_LIMIT),
     increaseCount: increases.length,

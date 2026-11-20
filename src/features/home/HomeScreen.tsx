@@ -1,10 +1,11 @@
 import { Link } from 'react-router';
 import type { PretometruDB } from '@/storage';
 import { noticeClass } from '@/ui/controls';
-import { formatCount } from '@/ui/insights/format';
-import { Failure, Loading } from '@/ui/insights/notices';
-import { useDbQuery } from '@/ui/insights/useLive';
+import { formatFutureReceipts } from '@/ui/insights/format';
 import { useToday } from '@/ui/insights/useToday';
+import { useDbQuery } from '@/ui/live';
+import { plural } from '@/ui/plural';
+import { Failure, Loading } from '@/ui/states';
 import { CategoryCard } from './CategoryCard';
 import { FirstRun } from './FirstRun';
 import { IncreasesCard } from './IncreasesCard';
@@ -20,7 +21,7 @@ function Drafts({ count }: { count: number }) {
     <p className={noticeClass.warning}>
       {count === 1
         ? 'Ai o ciornă de verificat.'
-        : `Ai ${formatCount(count, 'ciornă', 'ciorne')} de verificat.`}{' '}
+        : `Ai ${plural(count, 'ciornă', 'ciorne')} de verificat.`}{' '}
       Ciornele nu intră în cheltuieli până nu sunt confirmate.{' '}
       <Link to="/bonuri" className="font-medium underline">
         Vezi bonurile
@@ -34,6 +35,11 @@ function Dashboard({ data }: { data: HomeData }) {
     <div className="space-y-4">
       {data.recent.drafts > 0 ? <Drafts count={data.recent.drafts} /> : null}
       <MonthCard data={data} />
+      {data.later.count > 0 ? (
+        <p className={noticeClass.info}>
+          {`${formatFutureReceipts(data.later.count, data.later.months)} și nu intră în luna aceasta.`}
+        </p>
+      ) : null}
       <CategoryCard data={data} />
       <RecentCard recent={data.recent} />
       <IncreasesCard data={data} />

@@ -42,19 +42,16 @@ describe('spending over the four real receipts (ground truth saved with saveRece
     const everything = await getSpending(db);
 
     expect(everything).toMatchObject({ from: '2026-08', to: '2026-12', totalBani: 67_973 });
-    expect(everything.months).toEqual([
-      { month: '2026-08', totalBani: 36_341, receiptCount: 1 },
-      { month: '2026-11', totalBani: 25_465, receiptCount: 2 },
-      { month: '2026-12', totalBani: 6167, receiptCount: 1 },
+    // Every month from the first receipt to the last, so the gap shows
+    expect(everything.months.map((m) => [m.month, m.totalBani, m.receiptCount])).toEqual([
+      ['2026-08', 36_341, 1],
+      ['2026-09', 0, 0],
+      ['2026-10', 0, 0],
+      ['2026-11', 25_465, 2],
+      ['2026-12', 6167, 1],
     ]);
-    const filled = await getSpending(db, { from: '2026-08', to: '2026-12' });
-    expect(filled.months.map((m) => [m.month, m.totalBani])).toEqual([
-      ['2026-08', 36_341],
-      ['2026-09', 0],
-      ['2026-10', 0],
-      ['2026-11', 25_465],
-      ['2026-12', 6167],
-    ]);
+    const asked = await getSpending(db, { from: '2026-08', to: '2026-12' });
+    expect(asked.months).toEqual(everything.months);
   });
 
   it('splits November by category and adds up to what was paid', async () => {
@@ -162,16 +159,16 @@ describe('spending over synthetic multi-month data', () => {
     ]);
   });
 
-  it('counts discounts as they are inside the lines, and vouchers as paid less', async () => {
+  it('counts discounts as they are inside the lines, a coupon under its item, and vouchers as paid less', async () => {
     const { db } = await world();
 
     const november = await getSpending(db, { from: '2026-11', to: '2026-11' });
 
     expect(nameAndAmount(november.categories)).toEqual([
-      ['Lactate & ouă', 4350],
+      ['Lactate & ouă', 4350 - 459], // the 4,59 coupon under the milk reduces its category
       ['Carne & mezeluri', 3000],
+      ['Non-produs', 200 + 50 + 999], // a deposit, a bag and a fee
       ['Fără categorie', 1000],
-      ['Non-produs', 200 + 50 + 999 - 459],
     ]);
     expect(november.adjustments).toEqual({ vouchersBani: -200, roundingBani: 0 });
     expect(november.totalBani).toBe(8940);

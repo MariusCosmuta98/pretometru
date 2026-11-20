@@ -12,7 +12,7 @@ import {
 } from '@/analytics/spending-testing';
 import { createProduct } from '@/catalog';
 import { SEED_CATEGORIES, type Product } from '@/domain';
-import { getSetting } from '@/storage';
+import { setSetting } from '@/storage';
 
 const NOW = new Date('2026-11-20T12:00:00Z');
 const DAIRY = SEED_CATEGORIES[0]!.id;
@@ -167,6 +167,8 @@ describe('Statistics: the four real receipts', () => {
     expect(rowsOf(months)).toEqual([
       'decembrie 202661,67 lei1 bon',
       'noiembrie 2026254,65 lei2 bonuri',
+      'octombrie 20260,00 leiNiciun bon', // the gap between August and November shows
+      'septembrie 20260,00 leiNiciun bon',
       'august 2026363,41 lei1 bon',
     ]);
   });
@@ -214,6 +216,28 @@ describe('Statistics: the four real receipts', () => {
     expect(screen.queryByText(/Un bon are data în viitor/)).toBeNull();
   });
 
+  it('keeps the picker, and the focus on the button, when the period changes', async () => {
+    await seed();
+    renderStats();
+    await screen.findByRole('region', { name: /Perioada/ });
+    const button = screen.getByRole('button', { name: '3 luni' });
+    button.focus();
+
+    fireEvent.click(button);
+
+    // Switching is a change of view: no loading state replaces the screen and the button stays.
+    expect(screen.queryByText('Se încarcă statisticile…')).toBeNull();
+    expect(screen.getByRole('button', { name: '3 luni' })).toBe(button);
+    expect(document.activeElement).toBe(button);
+    await waitFor(() => {
+      expect(button.getAttribute('aria-pressed')).toBe('true');
+      expect(screen.getByRole('region', { name: /Perioada/ }).textContent).toContain(
+        'septembrie 2026 – noiembrie 2026',
+      );
+    });
+    expect(document.activeElement).toBe(button);
+  });
+
   it('says so when the chosen period has no receipt, and keeps the picker', async () => {
     const db = await resetAppDb();
     await saveGroundTruth(db, 'metro-invoice-2026-08-12');
@@ -223,6 +247,50 @@ describe('Statistics: the four real receipts', () => {
     expect(screen.getByRole('group', { name: 'Perioadă' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Pe luni' })).toBeNull();
     expect(screen.getByRole('region', { name: 'Creșteri de preț' })).toBeTruthy();
+  });
+});
+
+describe('Statistics: coupons', () => {
+  async function seedCoupon(coupon: 'under the item' | 'before any item') {
+    const db = await resetAppDb();
+    const item = { rawName: 'LAPTE UHT 1L', lineTotalBani: 500, categoryId: DAIRY };
+    const discount = {
+      rawName: 'REDUCERE LIDL PLUS',
+      lineTotalBani: -150,
+      kind: 'discount' as const,
+    };
+    await savePurchase(db, {
+      chain: 'lidl',
+      purchasedAt: '2026-11-10T10:00',
+      lines: coupon === 'under the item' ? [item, discount] : [discount, item],
+    });
+    renderStats();
+    const card = await screen.findByRole('region', { name: 'Pe categorii' });
+    return rowsOf(within(card).getByRole('list', { name: 'Cheltuieli pe categorii' }));
+  }
+
+  it('shows the category net of a coupon printed under its item', async () => {
+    const rows = await seedCoupon('under the item');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain('Lactate & ouă');
+    expect(rows[0]).toContain('3,50 lei');
+    expect(rows[0]).toContain('100% din cheltuieli');
+  });
+
+  it('keeps a coupon with no item above it in Non-produs, and no share goes above 100%', async () => {
+    const rows = await seedCoupon('before any item');
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('Lactate & ouă');
+    expect(rows[0]).toContain('5,00 lei');
+    expect(rows[0]).toContain('100% din cheltuieli'); // 500 of the 500 spent on goods, not 143 %
+    expect(rows[1]).toContain('Non-produs');
+    expect(rows[1]).toContain('−1,50 lei'); // typographic minus, as in the rows below
+    expect(rows[1]).not.toContain('%');
+    expect(screen.getByRole('list', { name: 'Ajustări și total' }).textContent).toContain(
+      'Total plătit3,50 lei',
+    );
   });
 });
 
@@ -290,25 +358,25 @@ describe('Statistics: price increases in detail', () => {
     expect(within(card).getByRole('button', { name: 'Arată mai puține' })).toBeTruthy();
   });
 
-  it('changes the comparison window, which every screen shares, and follows it', async () => {
+  it('follows the comparison window of the settings, which the product screens change', async () => {
     // The later purchase is 61 days old: inside the default window of 90 days, outside 30.
     const { db } = await seedIncreases(1, ['2026-08-01', '2026-09-20']);
     renderStats();
     const card = await screen.findByRole('region', { name: 'Creșteri de preț' });
     expect(within(card).getByRole('link', { name: /Produs 01/ })).toBeTruthy();
+    expect(within(card).getByRole('link', { name: 'Produse' }).getAttribute('href')).toBe(
+      '/produse',
+    );
 
-    fireEvent.change(within(card).getByRole('combobox', { name: 'Perioadă de comparație' }), {
-      target: { value: '30' },
-    });
+    await setSetting(db, 'priceWindowDays', 30);
 
     await waitFor(() => {
       expect(card.textContent).toContain('ultimele 30 de zile');
       expect(card.textContent).toContain('Nicio creștere de preț în această perioadă');
     });
-    expect(await getSetting(db, 'priceWindowDays')).toBe(30);
   });
 
-  it('can leave sale prices out', async () => {
+  it('shows a sale price, and leaves sale prices out when the setting says so', async () => {
     const db = await resetAppDb();
     const milk = await createProduct(db, { name: 'Lapte UHT', categoryId: DAIRY, baseUnit: 'l' });
     const line = (lineTotalBani: number, discountBani = 0) => ({
@@ -333,12 +401,13 @@ describe('Statistics: price increases in detail', () => {
     expect(within(card).getByRole('link', { name: /Lapte UHT/ }).textContent).toContain(
       'preț anterior la reducere',
     );
+    expect(card.textContent).not.toContain('nu sunt luate în calcul');
 
-    fireEvent.click(within(card).getByRole('checkbox', { name: 'Fără prețuri la reducere' }));
+    await setSetting(db, 'excludeDiscountedPrices', true);
 
     await waitFor(() => {
       expect(card.textContent).toContain('Nicio creștere de preț în această perioadă');
+      expect(card.textContent).toContain('Prețurile la reducere nu sunt luate în calcul.');
     });
-    expect(await getSetting(db, 'excludeDiscountedPrices')).toBe(true);
   });
 });

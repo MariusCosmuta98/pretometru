@@ -3,7 +3,7 @@
 export { cheapestPerStore, DEFAULT_WINDOW_DAYS, windowStart } from './cheapest';
 export { loadPriceIncreases, priceIncreases } from './increases';
 export type { IncreaseOptions, PriceIncrease, PriceIncreaseQuery } from './increases';
-export { currentMonth, isMonthKey, lastMonths, monthOf, monthRange, shiftMonth } from './months';
+export { currentMonth, lastMonths, monthOf, monthRange, monthSpan, shiftMonth } from './months';
 export type { MonthKey } from './months';
 export { toObservations } from './observations';
 export type { ObservationSource } from './observations';

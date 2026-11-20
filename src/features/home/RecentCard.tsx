@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import type { RecentReceipts } from '@/analytics';
 import { formatLei } from '@/domain';
-import { card } from '@/ui/controls';
+import { buttonQuiet, card } from '@/ui/controls';
 import { formatDay } from '@/ui/insights/format';
 
 const muted = 'text-sm text-slate-600 dark:text-slate-400';
@@ -10,14 +10,11 @@ const muted = 'text-sm text-slate-600 dark:text-slate-400';
 export function RecentCard({ recent }: { recent: RecentReceipts }) {
   return (
     <section aria-labelledby="home-recent" className={card}>
-      <div className="mb-1 flex items-baseline justify-between gap-3">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <h2 id="home-recent" className="text-base font-semibold">
           Ultimele bonuri
         </h2>
-        <Link
-          to="/bonuri"
-          className="rounded text-sm font-medium text-teal-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 dark:text-teal-300"
-        >
+        <Link to="/bonuri" className={buttonQuiet}>
           Toate bonurile
         </Link>
       </div>

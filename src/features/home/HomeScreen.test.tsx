@@ -5,7 +5,7 @@ import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProduct } from '@/catalog';
-import { SEED_CATEGORIES } from '@/domain';
+import { SEED_CATEGORIES, type Product } from '@/domain';
 import { setSetting } from '@/storage';
 import {
   resetAppDb,
@@ -258,6 +258,33 @@ describe('Home: a new day', () => {
   });
 });
 
+describe('Home: a receipt dated in the future', () => {
+  it('says that it is not part of this month, and still lists it', async () => {
+    const db = await resetAppDb();
+    await saveGroundTruth(db, 'lidl-2026-12-29');
+    renderHome();
+
+    const month = await screen.findByRole('region', { name: /Luna aceasta/ });
+    expect(month.textContent).toContain('0,00 lei');
+    expect(month.textContent).toContain('Niciun bon confirmat luna aceasta');
+    expect(
+      screen.getByText('Un bon are data în viitor (decembrie 2026) și nu intră în luna aceasta.'),
+    ).toBeTruthy();
+    const recent = screen.getByRole('region', { name: 'Ultimele bonuri' });
+    expect(within(recent).getByRole('link', { name: /Lidl/ }).textContent).toContain('29.12.2026');
+  });
+
+  it('keeps quiet when no receipt is dated after this month', async () => {
+    const db = await resetAppDb();
+    await saveGroundTruth(db, 'metro-invoice-2026-08-12');
+    await saveGroundTruth(db, 'kaufland-2026-11-07');
+    renderHome();
+
+    await screen.findByRole('region', { name: /Luna aceasta/ });
+    expect(screen.queryByText(/au data în viitor|Un bon are data în viitor/)).toBeNull();
+  });
+});
+
 describe('Home: drafts', () => {
   it('marks a draft, offers to review it and does not count it', async () => {
     const db = await resetAppDb();
@@ -326,6 +353,92 @@ describe('Home: price increases', () => {
       expect(card.textContent).toContain('ultimele 10 zile');
       expect(card.textContent).toContain('Nicio creștere de preț în această perioadă');
     });
+  });
+
+  it('marks a price that was only reduced: a promotion that ended reads as an increase', async () => {
+    const db = await resetAppDb();
+    const milk = await createProduct(db, { name: 'Lapte UHT', categoryId: DAIRY, baseUnit: 'l' });
+    const line = (lineTotalBani: number, discountBani = 0) => ({
+      rawName: 'LAPTE UHT 1L',
+      lineTotalBani,
+      discountBani,
+      productId: milk.id,
+      pack: { qty: 1, unit: 'l' as const },
+    });
+    await savePurchase(db, {
+      chain: 'kaufland',
+      purchasedAt: '2026-10-01T09:00',
+      lines: [line(400, 100)],
+    });
+    await savePurchase(db, {
+      chain: 'kaufland',
+      purchasedAt: '2026-11-07T09:00',
+      lines: [line(500)],
+    });
+    renderHome();
+
+    const card = await screen.findByRole('region', { name: 'Creșteri de preț' });
+    const link = within(card).getByRole('link', { name: /Lapte UHT/ });
+    expect(link.textContent).toContain('+25,0%');
+    expect(link.textContent).toContain('preț anterior la reducere');
+
+    await setSetting(db, 'excludeDiscountedPrices', true);
+    await waitFor(() => {
+      expect(card.textContent).toContain('Nicio creștere de preț în această perioadă');
+    });
+  });
+
+  it('writes the window in Romanian, a single day included', async () => {
+    const { db } = await withIncrease();
+    renderHome();
+    const card = await screen.findByRole('region', { name: 'Creșteri de preț' });
+    expect(card.textContent).toContain('ultimele 90 de zile');
+
+    await setSetting(db, 'priceWindowDays', 1);
+
+    await waitFor(() => {
+      expect(card.textContent).toContain('Văzute în ultima zi,');
+    });
+  });
+
+  it('lists the five biggest and counts all of them, with the "de" Romanian wants from 20', async () => {
+    const db = await resetAppDb();
+    const products: Product[] = [];
+    for (let i = 0; i < 21; i += 1) {
+      products.push(
+        await createProduct(db, {
+          name: `Produs ${String(i + 1).padStart(2, '0')}`,
+          categoryId: DAIRY,
+          baseUnit: 'l',
+        }),
+      );
+    }
+    const lines = (price: (i: number) => number) =>
+      products.map((product, i) => ({
+        rawName: `ARTICOL ${i + 1}`,
+        lineTotalBani: price(i),
+        productId: product.id,
+        pack: { qty: 1, unit: 'l' as const },
+      }));
+    await savePurchase(db, {
+      chain: 'kaufland',
+      purchasedAt: '2026-10-01T09:00',
+      lines: lines(() => 500),
+    });
+    await savePurchase(db, {
+      chain: 'kaufland',
+      purchasedAt: '2026-11-07T09:00',
+      lines: lines((i) => 510 + 10 * i),
+    });
+    renderHome();
+
+    const card = await screen.findByRole('region', { name: 'Creșteri de preț' });
+    const list = within(card).getByRole('list', { name: 'Cele mai mari creșteri de preț' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(list).getAllByRole('listitem')[0]?.textContent).toContain('Produs 21');
+    expect(
+      within(card).getByRole('link', { name: 'Toate cele 21 de creșteri' }).getAttribute('href'),
+    ).toBe('/statistici');
   });
 
   it('follows new receipts while it is open', async () => {

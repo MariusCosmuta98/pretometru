@@ -206,11 +206,44 @@ describe('loadPriceIncreases', () => {
     ]);
   });
 
-  it('takes the window and the sale filter from the settings', async () => {
+  it('takes the window from the settings, unless the caller says otherwise', async () => {
     const { db } = await world();
     await setSetting(db, 'priceWindowDays', 10); // the later purchase is 13 days old
 
     expect(await loadPriceIncreases(db, { now })).toEqual([]);
     expect(await loadPriceIncreases(db, { now, days: 30 })).toHaveLength(2);
+  });
+
+  it('takes the sale filter from the settings: a price that was only reduced is no increase', async () => {
+    const db = await createTestDb();
+    await ensureSeed(db);
+    const milk = await createProduct(db, {
+      name: 'Lapte UHT',
+      categoryId: SEED_CATEGORIES[0]!.id,
+      baseUnit: 'l',
+    });
+    const line = (lineTotalBani: number, discountBani = 0) => ({
+      rawName: 'LAPTE UHT 1L',
+      lineTotalBani,
+      discountBani,
+      productId: milk.id,
+      pack: { qty: 1, unit: 'l' as const },
+    });
+    await savePurchase(db, {
+      chain: 'kaufland',
+      purchasedAt: '2026-10-01T09:00',
+      lines: [line(400, 100)], // a sale price
+    });
+    await savePurchase(db, {
+      chain: 'kaufland',
+      purchasedAt: '2026-11-07T09:00',
+      lines: [line(500)],
+    });
+
+    expect(await loadPriceIncreases(db, { now })).toHaveLength(1);
+
+    await setSetting(db, 'excludeDiscountedPrices', true);
+    expect(await loadPriceIncreases(db, { now })).toEqual([]);
+    expect(await loadPriceIncreases(db, { now, excludeSales: false })).toHaveLength(1);
   });
 });

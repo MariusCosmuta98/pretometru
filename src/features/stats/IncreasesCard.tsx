@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { PretometruDB } from '@/storage';
-import { card } from '@/ui/controls';
-import { formatCount } from '@/ui/insights/format';
+import { Link } from 'react-router';
+import { buttonQuiet, card } from '@/ui/controls';
+import { lastDays } from '@/ui/insights/format';
 import { PriceIncreaseList } from '@/ui/insights/PriceIncreaseList';
-import { PriceSettings } from './PriceSettings';
+import { plural } from '@/ui/plural';
 import type { StatsData } from './queries';
 
 /** Increases listed before "Arată toate". */
@@ -13,9 +13,10 @@ const muted = 'text-sm text-slate-600 dark:text-slate-400';
 
 /**
  * Every price increase seen in the comparison window: the product, the store, the two prices with
- * their dates, the move in money and percent. The window and the sale filter are edited right here.
+ * their dates, the move in money and percent, the shelf price of the pack and sale marks. The window
+ * and the sale filter are the settings of the product screens, which is where they are changed.
  */
-export function IncreasesCard({ data, db }: { data: StatsData; db: PretometruDB | undefined }) {
+export function IncreasesCard({ data }: { data: StatsData }) {
   const { increases, windowDays, excludeSales } = data;
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? increases : increases.slice(0, SHOWN);
@@ -25,11 +26,16 @@ export function IncreasesCard({ data, db }: { data: StatsData; db: PretometruDB 
       <h2 id="stats-increases" className="text-base font-semibold">
         Creșteri de preț
       </h2>
-      <p className={muted}>
-        Văzute în ultimele {formatCount(windowDays, 'zi', 'zile')}, față de achiziția anterioară din
-        același magazin, pe unitatea de măsură a produsului.
+      <p className={`${muted} mb-1`}>
+        Văzute în {lastDays(windowDays)}, față de achiziția anterioară din același magazin, pe
+        unitatea de măsură a produsului.
+        {excludeSales ? ' Prețurile la reducere nu sunt luate în calcul.' : ''} Perioada de
+        comparație și filtrul pentru reduceri se schimbă în{' '}
+        <Link to="/produse" className="font-medium underline">
+          Produse
+        </Link>
+        .
       </p>
-      {db ? <PriceSettings db={db} windowDays={windowDays} excludeSales={excludeSales} /> : null}
       {increases.length === 0 ? (
         <p className={`${muted} py-2`}>
           Nicio creștere de preț în această perioadă. Apar după ce cumperi același produs de două
@@ -45,9 +51,11 @@ export function IncreasesCard({ data, db }: { data: StatsData; db: PretometruDB 
               onClick={() => {
                 setShowAll((open) => !open);
               }}
-              className="mt-2 inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-teal-800 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 dark:text-teal-300 dark:hover:bg-slate-800"
+              className={`${buttonQuiet} mt-2`}
             >
-              {showAll ? 'Arată mai puține' : `Arată toate cele ${increases.length} creșteri`}
+              {showAll
+                ? 'Arată mai puține'
+                : `Arată toate cele ${plural(increases.length, 'creștere', 'creșteri')}`}
             </button>
           ) : null}
         </>

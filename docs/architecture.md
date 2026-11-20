@@ -56,7 +56,7 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/features/backup`, `categories`, `stores` | Settings sections "Copie de siguranță", "Categorii" and "Magazine"; the routes `/setari/categorii` and `/setari/magazine` (§15) | `backup-categories-stores`            |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
-| `src/ui/`                    | shared presentational components, icons, and what the data screens share: the live-query hooks (`live.ts`), `Loading`/`Failure`, `ConfirmPanel`, `plural` (§15); `insights/`: the formatting, bars, price-increase list and day hook of the Home and Statistics screens (§5e) | shared (additive edits)               |
+| `src/ui/`                    | shared presentational components, icons, and what the data screens share: the live-query hooks (`live.ts`), `Loading`/`Failure` (`states.tsx`), `ConfirmPanel`, `plural` (§15); `insights/`: the formatting, bars, price-increase list and day hook of the Home and Statistics screens (§5e) | shared (additive edits)               |
 | `config/`                    | build-time helpers (CSP plugin, OCR asset copy, the offline guard, §14); Node only, never bundled | `scaffold-pwa`; `ocr-assets*`: `ocr-pipeline`; `offline-guard*`: `pwa-offline-share` |
 | `e2e/`                       | Playwright browser checks of the production build (`npm run e2e`, §14); not part of `check` or CI yet | `pwa-offline-share` (base for `qa-hardening`) |
 | `scripts/`                   | Node scripts: leak check (`check-leaks.ts`), fixture sanitizer; the local OCR benchmark (`ocr-bench.ts`, §11) | `sample-fixtures`; `ocr-bench*` : `ocr-pipeline` |
@@ -432,14 +432,18 @@ the shared pieces of `src/ui/insights`.
   never count.
 - **How much a receipt costs**: what was **paid**, `paidBani`, else the printed `totalBani`. A payment-side voucher
   (Kaufland's "Tichet de ambalaje", `totalBani - paidBani`) is cash that did not leave the wallet, and the deposit it
-  refunds was counted on the receipt that charged it, so the totals of the months add up to the money spent. The
-  receipt lists still show the printed total, with "plătit" next to it when a voucher was used.
+  refunds was counted on the receipt that charged it, so the totals of the months add up to the money spent. Home's
+  last-receipts card shows the printed total with "plătit" next to it when a voucher was used; the Bonuri list shows the
+  printed total only.
 - **Categories split the lines** (`lineTotalBani`, already net of the line's own discount, so a discount is never
   taken twice). A product line counts in its product's category when the product and that category are live, else in
-  its own `categoryId` when that category is live, else in the visible bucket **"Fără categorie"**. Deposits, bags,
-  fees and standalone discount lines (negative) count too: in the line's own category when it has one, else in the
-  system **"Non-produs"** category, which can therefore be small or negative. A receipt without a live line is one
-  uncategorized amount. Categories are a flat list (`parentId` is ignored).
+  its own `categoryId` when that category is live, else in the visible bucket **"Fără categorie"**. Deposits, bags and
+  fees count too, in the system **"Non-produs"** category (or the regular category the user gave the line). A
+  **standalone discount** line (a coupon or promo, negative) reduces the category of the nearest product line **above
+  it** by `idx`, because receipts print it under the item it reduces, so the categories are net of coupons; with no
+  product line above it (a basket-level coupon first on the receipt) it stays in Non-produs, which is then below zero.
+  (The price analytics of §5b keep a standalone discount out of unit prices; this is the spending rule only.) A receipt
+  without a live line is one uncategorized amount. Categories are a flat list (`parentId` is ignored).
 - **What is left is never spread over the categories.** `paid - Σ lines` is reported as two signed
   `adjustments`: `vouchersBani` (zero or negative) and `roundingBani` (the lines against the printed total: METRO's one
   ban, or a mismatch the user accepted in the review). So `Σ categories + vouchersBani + roundingBani = totalBani`
@@ -453,55 +457,64 @@ the shared pieces of `src/ui/insights`.
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `toSpendingReceipts(source)`                              | the pure core: `SpendingReceipt[]` (paid, voucher, difference and the parts per bucket), oldest first |
 | `loadSpendingReceipts(db)`, `getSpending(db, period?)`    | the same from the database, in one read transaction; `getSpending` sums it over a period       |
-| `summarizeSpending(receipts, { from?, to? })`             | `PeriodSpending`: `totalBani`, `receiptCount`, `categories` (biggest first), `adjustments`, `months`, `stores`. Both ends are `YYYY-MM` and inclusive; with both given every month of the period is listed (empty ones with 0), else only the months that have a receipt |
+| `summarizeSpending(receipts, { from?, to? })`             | `PeriodSpending`: `totalBani`, `receiptCount`, `categories` (biggest first), `adjustments`, `months`, `stores`. Both ends are `YYYY-MM` and inclusive and default to the first and last month with a receipt; every month between them is listed (the empty ones with 0, so a gap shows), unless the span is over ten years (a receipt dated 2099 by mistake), when only the months that have a receipt are |
 | `compareSpending(current, previous)`                      | the change of the total (`deltaBani`, `pct`, absent when nothing was paid before) and the earlier amount of each current bucket |
-| `currentMonth(now)`, `lastMonths(now, n)`, `shiftMonth`, `monthRange`, `monthOf` | month arithmetic; the clock is always a parameter |
+| `currentMonth(now)`, `lastMonths(now, n)`, `shiftMonth`, `monthRange`, `monthSpan`, `monthOf` | month arithmetic; the clock is always a parameter |
 | `priceIncreases(products, observations, { now, days, excludeSales })`, `loadPriceIncreases(db, { limit? })` | the products that got dearer, biggest percentage first (below) |
 | `recentReceipts(receipts, stores, limit)`, `loadRecentReceipts(db, limit)` | the newest live receipts (drafts included) with the counts of all and of drafts |
 
 **Price increases.** Per product and store, the latest purchase against the previous one **at the same store** (the rule of
 `priceChange`, §5b), in the product's base unit, with sale prices left out when `excludeDiscountedPrices` says so. The
 increase must be **seen** in the window: the later purchase is within `priceWindowDays` of today (the earlier one may be
-older), and under half a percent is noise. A product that got dearer at two stores is listed twice.
+older), and under half a percent is noise. A product that got dearer at two stores is listed twice. A promotion that
+ended reads as an increase unless the user leaves sale prices out, so both lists mark a sale price.
 
 ### Screens
 
-Both read through a Dexie live query (`src/ui/insights/useLive.ts`, a copy of the one the product and list screens use: the
-querier must be an `async` function), so they follow imports, edits and settings; an unavailable IndexedDB shows a message.
-`useToday` (the Bucharest day, read again when the app returns to the foreground) is the `key` of each screen, so an
-installed app that stayed open overnight starts the new month with a fresh clock instead of keeping the old one.
+Both read through a Dexie live query (`useDbQuery` of `src/ui/live.ts`, with the shared `Loading` and `Failure` of
+`src/ui/states.tsx`: the querier must be an `async` function), so they follow imports, edits and settings; an unavailable
+IndexedDB shows a message. `useToday` (the Bucharest day, read again when the app returns to the foreground and once a
+minute) is the `key` of each screen, so an installed app that stays open overnight starts the new month with a fresh
+clock instead of keeping the old one. Counts and their nouns are `plural` of `src/ui/plural.ts` (`20 de bonuri`).
 
 - **Acasă** (`loadHome`): the *first run* (no live receipt) is one card with "Adaugă primul bon" (`/adauga`). Otherwise:
   "Luna aceasta" (paid this month, receipts, the change in money and percent against the **whole** previous month, or why
-  there is none; early in a month this reads as a fall, so the previous total is always shown); "Pe categorii" (this
-  month's buckets with the previous month's amount as a thin second bar and text; the first five categories, and
-  "Non-produs" and "Fără categorie" whenever they hold something, with "Arată toate categoriile" for the rest; then the
-  voucher and rounding rows and the total); "Ultimele bonuri" (the five newest, drafts marked "Ciornă", each a link to
-  its review `/bonuri/:id`); "Creșteri de preț" (the five biggest of the user's `priceWindowDays`, each a link to the
-  product, "Toate cele N creșteri" opens Statistici). Drafts get a notice with a link to `/bonuri`.
-- **Statistici** (`loadStats`): the period is 3, 6 (default), 12 months up to the current one, or "Tot", kept in the address
-  (`?perioada=3|6|12|tot`, so Back and reloads keep it). "Pe luni" (newest first), "Pe categorii" (with the share of the
-  goods, `<1%` for a sliver, and the same adjustment rows), "Pe magazine" (by store, with receipts and share of the
+  there is none; early in a month this reads as a fall, so the change is neutral, never red or green, and the previous
+  total is always shown), a note when a confirmed receipt is dated after this month (it is counted in its own); "Pe
+  categorii" (this month's buckets with the previous month's amount as a thin second bar and text; the first five
+  categories, and "Non-produs" and "Fără categorie" whenever they hold something, with "Arată toate categoriile" for the
+  rest; then the voucher and rounding rows and the total); "Ultimele bonuri" (the five newest, drafts marked "Ciornă",
+  each a link to its review `/bonuri/:id`); "Creșteri de preț" (the five biggest of the user's `priceWindowDays`, each a
+  link to the product, sale prices marked; "Toate cele N de creșteri" opens Statistici). Drafts get a notice with a link
+  to `/bonuri`.
+- **Statistici** (`loadStats`, `viewPeriod`): the period is 3, 6 (default), 12 months up to the current one, or "Tot",
+  kept in the address (`?perioada=3|6|12|tot`, so Back and reloads keep it). `loadStats` does not depend on the period:
+  it returns every confirmed receipt and `viewPeriod` derives the period from it, so switching is a change of view, never
+  a new query (no loading state, the picker keeps its focus). "Pe luni" (newest first, every month between the first and
+  the last), "Pe categorii" (with the share of the goods, `<1%` for a sliver, computed over the categories above zero so
+  that no share goes over 100%, and the same adjustment rows), "Pe magazine" (by store, with receipts and share of the
   total), and "Creșteri de preț" in detail (every increase, ten at first: both prices and dates, the move in money and
-  percent, the shelf price of the pack, sale marks) with the two comparison settings edited in place. A receipt dated
-  after a "last N months" period (in the future) is left out of it with a note and counted in its own month under
-  "Tot"; without any confirmed receipt the screen invites to add one.
+  percent, the shelf price of the pack, sale marks). The comparison window and the sale filter are the settings of the
+  product screens, which the card links to. A receipt dated after a "last N months" period (in the future) is left out of
+  it with a note and counted in its own month under "Tot"; without any confirmed receipt the screen invites to add one.
 - **Charts** are plain HTML and CSS bars (`BarList`), no chart library: nothing to load or precache, every number is
   also text, and the bar widths are set through the CSSOM (`style` prop), which `style-src 'self'` allows (checked in
   the built app). Colours of the buckets come from the category records.
-- **`src/ui/insights`**: `format.ts` (months, days, signed money, `+7,5%`, "20 de bonuri", unit prices), `BarList`,
-  `PriceIncreaseList`, `Adjustments`, `notices`, `useLive` and `useToday`. Products and lists keep their own copies of the
-  hook and of the formatters; pointing them at the shared ones is a follow-up.
+- **`src/ui/insights`**: `format.ts` (months, days, signed money, `+7,5%`, `ultimele 90 de zile`, unit prices), `BarList`,
+  `PriceIncreaseList`, `Adjustments` and `useToday`. Products and lists keep their own copies of the unit-price and date
+  formatters, like their live-query hooks; pointing them at shared ones is a follow-up.
 
 **Tests.** `src/analytics/*.test.ts`: month arithmetic and the Bucharest boundaries (winter and summer); the spending core
-on hand-made records; `spending-queries.test.ts` saves the four ground-truth receipts with `saveReceipt` (`spending-testing.ts`,
-which keeps the printed paid amount and fills the categories from the catalog's hints like the import does) and checks them in
-their months (METRO in August, Mega Image and Kaufland in November, Lidl in the future December), plus synthetic
-multi-month data (month ends, discounts and a voucher, drafts, deleted receipts, replaced lines, recategorized and
-deleted categories, a removed store); a fast-check property for the identity above. The screens have jsdom tests with the
-fixtures' clock (20.11.2026): first run, loading, comparison with the previous month, drafts, period switching, the
-future-dated receipt, increases and the settings, and following new data live. `e2e/dashboard.spec.ts` (§14) runs them
-against the production build.
+on hand-made records (what counts, the buckets, a coupon under its item or before any item, the months of a period); 
+`spending-queries.test.ts` saves the four ground-truth receipts with `saveReceipt` (`spending-testing.ts`, which keeps the
+printed paid amount and fills the categories from the catalog's hints like the import does) and checks them in their months
+(METRO in August, Mega Image and Kaufland in November, Lidl in the future December), plus synthetic multi-month data (month
+ends, discounts and a voucher, drafts, deleted receipts, replaced lines, recategorized and deleted categories, a removed
+store); a fast-check property for the identity above. The screens have jsdom tests with the fixtures' clock (20.11.2026):
+first run, loading and failure, comparison with the previous month, drafts, period switching and its focus, the
+future-dated receipt, coupons and shares, increases and the settings, a new day, and following new data live.
+`e2e/dashboard.spec.ts` (§14) runs them against the production build, and the build was audited with axe-core (WCAG 2.2 AA,
+light and dark: no violation).
 
 ## 6. Build, PWA and CSP
 

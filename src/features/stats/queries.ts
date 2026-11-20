@@ -7,6 +7,7 @@ import {
   type PeriodSpending,
   type PriceIncrease,
   type SpendingPeriod,
+  type SpendingReceipt,
 } from '@/analytics';
 import { getSetting, type PretometruDB } from '@/storage';
 
@@ -33,14 +34,15 @@ export function periodParam(choice: PeriodChoice): string {
   return PERIOD_CHOICES.find((entry) => entry.value === choice)?.param ?? '';
 }
 
+/**
+ * What the screen reads from the device. It does not depend on the chosen period, so that switching
+ * the period is a change of view and never a new query (no loading state, the picker keeps its focus).
+ */
 export interface StatsData {
-  choice: PeriodChoice;
-  /** What was spent in the chosen period. */
-  spending: PeriodSpending;
-  /** Confirmed receipts on the device, whatever their date: none means nothing to show yet. */
-  receiptCount: number;
-  /** Receipts dated after a "last N months" period (in the future): left out of it, found under "Tot". */
-  later: { count: number; months: MonthKey[] };
+  /** When the data was read: the clock the periods are counted from. */
+  now: Date;
+  /** Every confirmed receipt on the device. */
+  receipts: SpendingReceipt[];
   /** Every price increase seen in the comparison window, biggest first. */
   increases: PriceIncrease[];
   /** The two comparison settings in force. */
@@ -48,27 +50,35 @@ export interface StatsData {
   excludeSales: boolean;
 }
 
-/** Everything the Statistics screen shows for a period; `now` is only a parameter for tests. */
-export async function loadStats(
-  db: PretometruDB,
-  choice: PeriodChoice,
-  now: Date = new Date(),
-): Promise<StatsData> {
-  const receipts = await loadSpendingReceipts(db);
-  const period: SpendingPeriod = choice === 'all' ? {} : lastMonths(now, choice);
-  const spending = summarizeSpending(receipts, period);
-  const after = period.to === undefined ? [] : receipts.filter((r) => r.month > (period.to ?? ''));
-
+/** Everything the Statistics screen needs; `now` is only a parameter for tests. */
+export async function loadStats(db: PretometruDB, now: Date = new Date()): Promise<StatsData> {
   const windowDays = await getSetting(db, 'priceWindowDays');
   const excludeSales = await getSetting(db, 'excludeDiscountedPrices');
-
   return {
-    choice,
-    spending,
-    receiptCount: receipts.length,
-    later: { count: after.length, months: [...new Set(after.map((r) => r.month))].sort() },
+    now,
+    receipts: await loadSpendingReceipts(db),
     increases: await loadPriceIncreases(db, { now, days: windowDays, excludeSales }),
     windowDays,
     excludeSales,
+  };
+}
+
+export interface PeriodView {
+  spending: PeriodSpending;
+  /** Receipts dated after the period (in the future): left out of a "last N months" period, found under "Tot". */
+  later: { count: number; months: MonthKey[] };
+}
+
+/** The spending of the chosen period, and what lies after it. Pure. */
+export function viewPeriod(
+  { now, receipts }: Pick<StatsData, 'now' | 'receipts'>,
+  choice: PeriodChoice,
+): PeriodView {
+  const period: SpendingPeriod = choice === 'all' ? {} : lastMonths(now, choice);
+  const end = period.to;
+  const after = end === undefined ? [] : receipts.filter((receipt) => receipt.month > end);
+  return {
+    spending: summarizeSpending(receipts, period),
+    later: { count: after.length, months: [...new Set(after.map((r) => r.month))].sort() },
   };
 }

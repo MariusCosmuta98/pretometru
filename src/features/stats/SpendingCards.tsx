@@ -3,7 +3,8 @@ import { formatLei, roundDiv } from '@/domain';
 import { card } from '@/ui/controls';
 import { Adjustments } from '@/ui/insights/Adjustments';
 import { BarList, type BarItem } from '@/ui/insights/BarList';
-import { formatCount, formatMonth } from '@/ui/insights/format';
+import { formatAmount, formatMonth } from '@/ui/insights/format';
+import { plural } from '@/ui/plural';
 
 const muted = 'text-sm text-slate-600 dark:text-slate-400';
 
@@ -28,22 +29,19 @@ export function SummaryCard({ spending }: { spending: PeriodSpending }) {
         Perioada <span className="font-normal">· {periodLabel(spending)}</span>
       </h2>
       <p className="mt-1 text-3xl font-semibold tabular-nums">{formatLei(spending.totalBani)}</p>
-      <p className={muted}>
-        {formatCount(spending.receiptCount, 'bon confirmat', 'bonuri confirmate')}
-      </p>
+      <p className={muted}>{plural(spending.receiptCount, 'bon confirmat', 'bonuri confirmate')}</p>
     </section>
   );
 }
 
-/** Spending by month, the newest first; a period with both ends lists the empty months too. */
+/** Spending by month, the newest first, the empty months between the first and the last included. */
 export function MonthsCard({ spending }: { spending: PeriodSpending }) {
   const items: BarItem[] = spending.months.toReversed().map((entry) => ({
     key: entry.month,
     label: formatMonth(entry.month),
     value: entry.totalBani,
     valueText: formatLei(entry.totalBani),
-    detail:
-      entry.receiptCount === 0 ? 'Niciun bon' : formatCount(entry.receiptCount, 'bon', 'bonuri'),
+    detail: entry.receiptCount === 0 ? 'Niciun bon' : plural(entry.receiptCount, 'bon', 'bonuri'),
   }));
   return (
     <section aria-labelledby="stats-months" className={card}>
@@ -55,10 +53,14 @@ export function MonthsCard({ spending }: { spending: PeriodSpending }) {
   );
 }
 
-/** Spending by category with its share, the "Non-produs" and "Fără categorie" buckets among them, then what makes it add up. */
+/**
+ * Spending by category with its share of the spending on goods (the categories that are above zero,
+ * so the shares add up to 100% even when a coupon sits in "Non-produs"), the "Non-produs" and "Fără
+ * categorie" buckets among them, then the rows that make the list add up to the total.
+ */
 export function CategoriesCard({ spending }: { spending: PeriodSpending }) {
   const rows = spending.categories.filter((category) => category.amountBani !== 0);
-  const goods = rows.reduce((sum, category) => sum + category.amountBani, 0);
+  const goods = rows.reduce((sum, category) => sum + Math.max(0, category.amountBani), 0);
   const items: BarItem[] = rows.map((category) => {
     const percent = share(category.amountBani, goods);
     return {
@@ -69,7 +71,7 @@ export function CategoriesCard({ spending }: { spending: PeriodSpending }) {
         </>
       ),
       value: category.amountBani,
-      valueText: formatLei(category.amountBani),
+      valueText: formatAmount(category.amountBani),
       color: category.color,
       ...(percent === undefined ? {} : { detail: `${percent} din cheltuieli` }),
     };
@@ -93,8 +95,8 @@ export function StoresCard({ spending }: { spending: PeriodSpending }) {
       key: store.storeId,
       label: store.name,
       value: store.totalBani,
-      valueText: formatLei(store.totalBani),
-      detail: [formatCount(store.receiptCount, 'bon', 'bonuri'), percent && `${percent} din total`]
+      valueText: formatAmount(store.totalBani),
+      detail: [plural(store.receiptCount, 'bon', 'bonuri'), percent && `${percent} din total`]
         .filter(Boolean)
         .join(' · '),
     };

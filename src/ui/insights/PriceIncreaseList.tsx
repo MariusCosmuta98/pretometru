@@ -20,8 +20,9 @@ function Sale({ children }: { children: string }) {
 
 /**
  * Products that got dearer at a store, each a link to its product page. The compact form is the
- * Home card (store and the two prices); `detailed` adds the dates, the move in money, the shelf
- * price of the pack and whether either price was a sale price.
+ * Home card (store and the two prices, with a mark when either was a sale price: a promotion that
+ * ended reads as an increase); `detailed` adds the move in money, the dates and the shelf price of
+ * the pack.
  */
 export function PriceIncreaseList({
   items,
@@ -69,13 +70,13 @@ export function PriceIncreaseList({
                 {detailed
                   ? ` (${formatUnitDelta(change.deltaMilliBani, to.pricePerBaseMilliBani, baseUnit)})`
                   : null}
+                {from.onSale ? <Sale>preț anterior la reducere</Sale> : null}
+                {to.onSale ? <Sale>preț actual la reducere</Sale> : null}
               </p>
               {detailed ? (
                 <p className={muted}>
                   {formatDay(from.date)} → {formatDay(to.date)}
                   {shelf ? ` · ${shelf}` : null}
-                  {from.onSale ? <Sale>preț anterior la reducere</Sale> : null}
-                  {to.onSale ? <Sale>preț actual la reducere</Sale> : null}
                 </p>
               ) : null}
             </Link>

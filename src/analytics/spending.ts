@@ -8,7 +8,7 @@ import {
   type Receipt,
   type Store,
 } from '@/domain';
-import { monthOf, monthRange, type MonthKey } from './months';
+import { monthOf, monthRange, monthSpan, type MonthKey } from './months';
 import { percentChange } from './trend';
 
 /*
@@ -19,13 +19,17 @@ import { percentChange } from './trend';
  * - A receipt's spending is what was **paid**: `paidBani`, else its printed `totalBani`. A payment-side
  *   voucher (Kaufland's "Tichet de ambalaje") is cash that did not leave the wallet, and the deposit it
  *   refunds was counted on the receipt that charged it.
- * - The categories split the **lines** (their totals are already net of line discounts). Deposits, bags,
- *   fees and standalone discount lines count too: they sit in the system "Non-produs" category. A product
- *   line without a category known to the catalog sits in the visible "Fără categorie" bucket.
+ * - The categories split the **lines** (their totals are already net of line discounts). Deposits, bags
+ *   and fees count too: they sit in the system "Non-produs" category. A standalone discount line
+ *   (a coupon or promo, negative) reduces the category of the product line above it. A product line
+ *   without a category known to the catalog sits in the visible "Fără categorie" bucket.
  * - What separates the lines from the paid amount is never spread over the categories: it is reported as
  *   two signed adjustments (vouchers, rounding and mismatches), so the parts always add up to the total.
  * - A receipt belongs to the month of its printed date, also when that date is in the future.
  */
+
+/** A period longer than this (in months) lists only the months that have a receipt. */
+const MAX_LISTED_MONTHS = 120;
 
 export const UNKNOWN_STORE_NAME = 'Magazin necunoscut';
 export const UNCATEGORIZED_NAME = 'Fără categorie';
@@ -121,9 +125,10 @@ const isLive = (record: { deletedAt?: string | undefined }): boolean =>
 /**
  * The spending of every live, confirmed, dated receipt, oldest first. Pure: read the records with
  * `loadSpendingReceipts`. A product line is counted in its product's category when the product is
- * live and its category too, else in its own category, else in "Fără categorie"; a non-product line
- * in its own category when it has one, else in "Non-produs". A receipt without a live line counts as
- * one uncategorized amount. A store that cannot be found is "Magazin necunoscut".
+ * live and its category too, else in its own category, else in "Fără categorie". A non-product line
+ * goes to its own category when the user gave it a regular one, else to "Non-produs"; except a
+ * standalone discount, which follows the nearest product line above it. A receipt without a live line
+ * counts as one uncategorized amount. A store that cannot be found is "Magazin necunoscut".
  */
 export function toSpendingReceipts(source: SpendingSource): SpendingReceipt[] {
   const storeById = new Map(source.stores.map((store) => [store.id, store]));
@@ -147,14 +152,22 @@ export function toSpendingReceipts(source: SpendingSource): SpendingReceipt[] {
     return category ? bucketOf(category) : undefined;
   };
 
-  const bucketOfLine = (line: Line): SpendingBucket => {
-    if (line.kind !== 'product') {
-      return (
-        liveBucket(line.categoryId) ?? liveBucket(NON_PRODUCT_CATEGORY_ID) ?? NON_PRODUCT_FALLBACK
-      );
+  /**
+   * The bucket of a line; `above` is the bucket of the nearest product line above it. A standalone
+   * discount (a coupon or promo, printed under the item it reduces) follows that product line, so the
+   * categories are net of it; one with no product line above stays in "Non-produs". A regular category
+   * the user gave a non-product line wins; the Non-produs category that `saveReceipt` fills in by
+   * default does not count as a choice.
+   */
+  const bucketOfLine = (line: Line, above: SpendingBucket | undefined): SpendingBucket => {
+    if (line.kind === 'product') {
+      const product = line.productId === undefined ? undefined : productById.get(line.productId);
+      return liveBucket(product?.categoryId) ?? liveBucket(line.categoryId) ?? UNCATEGORIZED;
     }
-    const product = line.productId === undefined ? undefined : productById.get(line.productId);
-    return liveBucket(product?.categoryId) ?? liveBucket(line.categoryId) ?? UNCATEGORIZED;
+    const own = liveBucket(line.categoryId);
+    if (own?.kind === 'category') return own;
+    if (line.kind === 'discount' && above) return above;
+    return own ?? liveBucket(NON_PRODUCT_CATEGORY_ID) ?? NON_PRODUCT_FALLBACK;
   };
 
   const linesByReceipt = new Map<string, Line[]>();
@@ -175,11 +188,15 @@ export function toSpendingReceipts(source: SpendingSource): SpendingReceipt[] {
     const voucherBani = paidBani < receipt.totalBani ? receipt.totalBani - paidBani : 0;
     const goodsBani = paidBani + voucherBani;
 
-    const lines = linesByReceipt.get(receipt.id) ?? [];
+    const lines = (linesByReceipt.get(receipt.id) ?? []).toSorted(
+      (a, b) => a.idx - b.idx || a.id.localeCompare(b.id),
+    );
     const partsByBucket = new Map<string, SpendingPart>();
     let linesBani = 0;
+    let above: SpendingBucket | undefined;
     for (const line of lines) {
-      const bucket = bucketOfLine(line);
+      const bucket = bucketOfLine(line, above);
+      if (line.kind === 'product') above = bucket;
       const part = partsByBucket.get(bucketKey(bucket));
       if (part) part.amountBani += line.lineTotalBani;
       else partsByBucket.set(bucketKey(bucket), { bucket, amountBani: line.lineTotalBani });
@@ -257,7 +274,10 @@ export interface PeriodSpending {
   categories: CategorySpend[];
   /** `Σ categories + vouchersBani + roundingBani = totalBani`. */
   adjustments: SpendingAdjustments;
-  /** Oldest first: every month of the period when both ends are given, else only months with a receipt. */
+  /**
+   * Oldest first: every month from the first to the last of the period, the empty ones with 0, so a
+   * gap shows (only the months that have a receipt when the period spans over ten years).
+   */
   months: MonthSpend[];
   /** Biggest first. */
   stores: StoreSpend[];
@@ -323,9 +343,11 @@ export function summarizeSpending(
   const present = [...perMonth.keys()].sort();
   const from = period.from ?? present[0];
   const to = period.to ?? present.at(-1);
+  // Every month between the two ends, the empty ones too, so a gap shows; a span too long to be
+  // real (a receipt dated 2099 by mistake) lists only the months that have a receipt.
   const wanted =
-    period.from !== undefined && period.to !== undefined
-      ? monthRange(period.from, period.to)
+    from !== undefined && to !== undefined && monthSpan(from, to) <= MAX_LISTED_MONTHS
+      ? monthRange(from, to)
       : present;
 
   return {

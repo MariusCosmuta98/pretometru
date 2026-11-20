@@ -38,8 +38,13 @@ function receipt(overrides: Partial<Receipt> = {}): Receipt {
   return makeReceipt({ storeId: kaufland.id, totalBani: 1000, ...overrides });
 }
 
+const nextIdx = new Map<string, number>();
+
+/** A line of `of`, numbered in the order the lines are made (the printed order). */
 function line(of: Receipt, lineTotalBani: number, overrides: Partial<Line> = {}): Line {
-  return makeLine({ receiptId: of.id, lineTotalBani, ...overrides });
+  const idx = nextIdx.get(of.id) ?? 0;
+  nextIdx.set(of.id, idx + 1);
+  return makeLine({ receiptId: of.id, idx, lineTotalBani, ...overrides });
 }
 
 /** Receipts with their lines, as the spending views read them. */
@@ -211,7 +216,7 @@ describe('toSpendingReceipts: which bucket a line is counted in', () => {
     });
   });
 
-  it('counts deposits, bags, fees and standalone discounts in Non-produs, and still adds them up', () => {
+  it('counts deposits, bags and fees in Non-produs, and a coupon in the category of its item', () => {
     const r = receipt({ totalBani: 5140, paidBani: 4940 });
     const lines = [
       line(r, 4350, { categoryId: dairy.id }),
@@ -223,7 +228,7 @@ describe('toSpendingReceipts: which bucket a line is counted in', () => {
 
     const counted = spending([r], lines);
 
-    expect(amounts(counted)).toEqual({ 'Lactate & ouă': 4350, 'Non-produs': 790 });
+    expect(amounts(counted)).toEqual({ 'Lactate & ouă': 3891, 'Non-produs': 1249 });
     expect(
       counted[0]?.parts.find((part) => part.bucket.kind === 'non-product')?.bucket,
     ).toMatchObject({
@@ -231,6 +236,81 @@ describe('toSpendingReceipts: which bucket a line is counted in', () => {
       icon: '➖',
     });
     expect(counted[0]).toMatchObject({ paidBani: 4940, voucherBani: 200, differenceBani: 0 });
+  });
+
+  describe('a standalone discount', () => {
+    it('reduces the category of the product line above it, so the categories are net of coupons', () => {
+      const r = receipt({ totalBani: 350 });
+
+      const counted = spending(
+        [r],
+        [line(r, 500, { categoryId: dairy.id }), line(r, -150, { kind: 'discount' })],
+      );
+
+      expect(amounts(counted)).toEqual({ 'Lactate & ouă': 350 });
+    });
+
+    it('follows the product line above it, not a deposit or a bag in between', () => {
+      const r = receipt({ totalBani: 950 });
+      const lines = [
+        line(r, 1000, { categoryId: meat.id }),
+        line(r, 50, { kind: 'deposit' }),
+        line(r, -100, { kind: 'discount' }),
+      ];
+
+      expect(amounts(spending([r], lines))).toEqual({ 'Carne & mezeluri': 900, 'Non-produs': 50 });
+    });
+
+    it('follows the product in its category and a product without one in "Fără categorie"', () => {
+      const r = receipt({ totalBani: 1000 });
+      const lines = [
+        line(r, 600, { productId: milk.id }),
+        line(r, -100, { kind: 'discount' }),
+        line(r, 500),
+        line(r, -100, { kind: 'discount' }),
+      ];
+
+      expect(amounts(spending([r], lines))).toEqual({
+        'Lactate & ouă': 500,
+        [UNCATEGORIZED_NAME]: 400,
+      });
+    });
+
+    it('stays in Non-produs when no product line is above it', () => {
+      const r = receipt({ totalBani: 400 });
+
+      const counted = spending(
+        [r],
+        [line(r, -100, { kind: 'discount' }), line(r, 500, { categoryId: dairy.id })],
+      );
+
+      expect(amounts(counted)).toEqual({ 'Non-produs': -100, 'Lactate & ouă': 500 });
+    });
+
+    it('follows the printed order (idx), not the order the records come in', () => {
+      const r = receipt({ totalBani: 400 });
+      const first = line(r, 500, { categoryId: dairy.id });
+      const coupon = line(r, -100, { kind: 'discount' });
+      const second = line(r, 1000, { categoryId: meat.id });
+
+      const counted = spending([r], [second, coupon, first]);
+
+      expect(amounts(counted)).toEqual({ 'Lactate & ouă': 400, 'Carne & mezeluri': 1000 });
+    });
+
+    it('goes to a regular category the user gave it, over the product above it', () => {
+      const r = receipt({ totalBani: 400 });
+
+      const counted = spending(
+        [r],
+        [
+          line(r, 500, { categoryId: dairy.id }),
+          line(r, -100, { kind: 'discount', categoryId: meat.id }),
+        ],
+      );
+
+      expect(amounts(counted)).toEqual({ 'Lactate & ouă': 500, 'Carne & mezeluri': -100 });
+    });
   });
 
   it('honours a category the user gave a non-product line', () => {
@@ -284,7 +364,7 @@ describe('summarizeSpending', () => {
     ]);
   });
 
-  it('adds up everything when no period is given, listing only the months that have receipts', () => {
+  it('adds up everything when no period is given, listing every month from the first receipt to the last', () => {
     const everything = summarizeSpending(all);
 
     expect(everything).toMatchObject({
@@ -296,8 +376,16 @@ describe('summarizeSpending', () => {
     expect(everything.months).toEqual([
       { month: '2026-10', totalBani: 3000, receiptCount: 1 },
       { month: '2026-11', totalBani: 2900, receiptCount: 2 },
+      { month: '2026-12', totalBani: 0, receiptCount: 0 }, // a gap shows
       { month: '2027-01', totalBani: 500, receiptCount: 1 },
     ]);
+  });
+
+  it('lists only the months that have receipts when the period is too long to be real', () => {
+    const typo = receipt({ purchasedAt: '2099-01-05', totalBani: 100 });
+    const result = summarizeSpending([...all, ...spending([typo], [line(typo, 100)])]);
+
+    expect(result.months.map((m) => m.month)).toEqual(['2026-10', '2026-11', '2027-01', '2099-01']);
   });
 
   it('lists every month of a period that has both ends, the empty ones with zero', () => {
@@ -340,10 +428,11 @@ describe('summarizeSpending', () => {
     ]);
   });
 
-  it('keeps the visible buckets even when they are small or negative', () => {
+  it('keeps the visible buckets even when small or negative', () => {
     const r = receipt({ totalBani: 190, purchasedAt: '2026-11-07T10:00' });
+    // A basket-level coupon printed before any item has no product above it: Non-produs, below zero.
     const result = summarizeSpending(
-      spending([r], [line(r, 200), line(r, -10, { kind: 'discount' })]),
+      spending([r], [line(r, -10, { kind: 'discount' }), line(r, 200)]),
       { from: '2026-11', to: '2026-11' },
     );
 

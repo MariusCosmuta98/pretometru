@@ -9,10 +9,6 @@ export type MonthKey = string;
 const MONTH_KEY = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const LAST_INDEX = 9999 * 12 + 11;
 
-export function isMonthKey(text: string): boolean {
-  return MONTH_KEY.test(text);
-}
-
 function monthIndex(month: MonthKey): number {
   const match = MONTH_KEY.exec(month);
   if (!match) throw new RangeError(`Invalid month: ${month}`);
@@ -52,11 +48,13 @@ export function lastMonths(now: Date, count: number): { from: MonthKey; to: Mont
   return { from: shiftMonth(to, 1 - count), to };
 }
 
+/** How many months `from` to `to` cover, both ends included; 0 when `from` is after `to`. */
+export function monthSpan(from: MonthKey, to: MonthKey): number {
+  return Math.max(0, monthIndex(to) - monthIndex(from) + 1);
+}
+
 /** Every month from `from` to `to`, inclusive, oldest first; empty when `from` is after `to`. */
 export function monthRange(from: MonthKey, to: MonthKey): MonthKey[] {
   const first = monthIndex(from);
-  const last = monthIndex(to);
-  return Array.from({ length: Math.max(0, last - first + 1) }, (_, offset) =>
-    monthAt(first + offset),
-  );
+  return Array.from({ length: monthSpan(from, to) }, (_, offset) => monthAt(first + offset));
 }

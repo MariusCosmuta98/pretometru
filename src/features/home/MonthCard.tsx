@@ -1,6 +1,7 @@
 import { formatLei } from '@/domain';
 import { card } from '@/ui/controls';
-import { formatCount, formatMonth, formatPercent, formatSignedLei } from '@/ui/insights/format';
+import { formatMonth, formatPercent, formatSignedLei } from '@/ui/insights/format';
+import { plural } from '@/ui/plural';
 import type { HomeData } from './queries';
 
 const muted = 'text-sm text-slate-600 dark:text-slate-400';
@@ -23,13 +24,10 @@ function Versus({ data }: { data: HomeData }) {
     );
   }
 
-  const tone =
-    comparison.deltaBani > 0
-      ? 'text-red-700 dark:text-red-400'
-      : 'text-green-700 dark:text-green-400';
+  // Neutral on purpose: early in the month this month is not finished, so "less than last month" is no news.
   return (
     <p className="mt-2 text-sm">
-      <span className={`font-medium tabular-nums ${tone}`}>
+      <span className="font-medium tabular-nums text-slate-800 dark:text-slate-200">
         <span aria-hidden="true">{comparison.deltaBani > 0 ? '↑' : '↓'}</span>{' '}
         {formatSignedLei(comparison.deltaBani)}
         {comparison.pct === undefined ? '' : ` (${formatPercent(comparison.pct)})`}
@@ -53,7 +51,7 @@ export function MonthCard({ data }: { data: HomeData }) {
       <p className={muted}>
         {current.receiptCount === 0
           ? 'Niciun bon confirmat luna aceasta'
-          : formatCount(current.receiptCount, 'bon confirmat', 'bonuri confirmate')}
+          : plural(current.receiptCount, 'bon confirmat', 'bonuri confirmate')}
       </p>
       <Versus data={data} />
     </section>

@@ -1,11 +1,10 @@
-import { useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { PretometruDB } from '@/storage';
 import { buttonPrimary, card, noticeClass } from '@/ui/controls';
-import { formatCount, formatMonth } from '@/ui/insights/format';
-import { Failure, Loading } from '@/ui/insights/notices';
-import { useDb, useDbQuery } from '@/ui/insights/useLive';
+import { formatFutureReceipts } from '@/ui/insights/format';
 import { useToday } from '@/ui/insights/useToday';
+import { useDbQuery } from '@/ui/live';
+import { Failure, Loading } from '@/ui/states';
 import { IncreasesCard } from './IncreasesCard';
 import { PeriodPicker } from './PeriodPicker';
 import {
@@ -13,22 +12,14 @@ import {
   loadStats,
   parsePeriod,
   periodParam,
+  viewPeriod,
   type PeriodChoice,
-  type StatsData,
 } from './queries';
 import { CategoriesCard, MonthsCard, StoresCard, SummaryCard } from './SpendingCards';
 
-function FutureNote({ later }: { later: StatsData['later'] }) {
-  const months = later.months.map(formatMonth).join(', ');
-  const single = later.count === 1;
-  const who = single ? 'Un bon are' : `${formatCount(later.count, 'bon', 'bonuri')} au`;
-  const find = single ? 'Îl găsești' : 'Le găsești';
-  return (
-    <p className={noticeClass.info}>
-      {`${who} data în viitor (${months}) și nu intră în această perioadă. ${find} la „Tot”.`}
-    </p>
-  );
-}
+// A module-level function: the live query must keep its identity between renders, and it does not
+// depend on the chosen period (that is a view of what it returns), so a switch never reloads.
+const loadNow = (db: PretometruDB) => loadStats(db);
 
 function Empty() {
   return (
@@ -48,9 +39,7 @@ function Empty() {
 function Stats() {
   const [params, setParams] = useSearchParams();
   const choice = parsePeriod(params.get('perioada'));
-  const query = useCallback((db: PretometruDB) => loadStats(db, choice), [choice]);
-  const database = useDb();
-  const stats = useDbQuery(query);
+  const stats = useDbQuery(loadNow);
 
   if (stats.status === 'error') {
     return <Failure>Nu am putut deschide datele de pe acest dispozitiv.</Failure>;
@@ -58,8 +47,9 @@ function Stats() {
   if (stats.status === 'loading') return <Loading what="statisticile" />;
 
   const data = stats.value;
-  if (data.receiptCount === 0) return <Empty />;
+  if (data.receipts.length === 0) return <Empty />;
 
+  const { spending, later } = viewPeriod(data, choice);
   const choose = (next: PeriodChoice) => {
     setParams(next === DEFAULT_PERIOD ? {} : { perioada: periodParam(next) }, { replace: true });
   };
@@ -67,18 +57,24 @@ function Stats() {
   return (
     <div className="space-y-4">
       <PeriodPicker value={choice} onChange={choose} />
-      {data.later.count > 0 ? <FutureNote later={data.later} /> : null}
-      {data.spending.receiptCount === 0 ? (
+      {later.count > 0 ? (
+        <p className={noticeClass.info}>
+          {`${formatFutureReceipts(later.count, later.months)} și nu intră în această perioadă. ${
+            later.count === 1 ? 'Îl găsești' : 'Le găsești'
+          } la „Tot”.`}
+        </p>
+      ) : null}
+      {spending.receiptCount === 0 ? (
         <p className={noticeClass.info}>Niciun bon confirmat în perioada aleasă.</p>
       ) : (
         <>
-          <SummaryCard spending={data.spending} />
-          <MonthsCard spending={data.spending} />
-          <CategoriesCard spending={data.spending} />
-          <StoresCard spending={data.spending} />
+          <SummaryCard spending={spending} />
+          <MonthsCard spending={spending} />
+          <CategoriesCard spending={spending} />
+          <StoresCard spending={spending} />
         </>
       )}
-      <IncreasesCard data={data} db={database.status === 'ready' ? database.value : undefined} />
+      <IncreasesCard data={data} />
     </div>
   );
 }

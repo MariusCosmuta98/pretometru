@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { formatLei } from '@/domain';
-import { card } from '@/ui/controls';
+import { buttonQuiet, card } from '@/ui/controls';
 import { Adjustments } from '@/ui/insights/Adjustments';
 import { BarList, type BarItem } from '@/ui/insights/BarList';
-import { formatMonth } from '@/ui/insights/format';
+import { formatAmount, formatMonth } from '@/ui/insights/format';
 import type { HomeData } from './queries';
 
 /** Categories shown before "Arată toate"; the "Non-produs" and "Fără categorie" buckets always show. */
@@ -31,7 +30,7 @@ export function CategoryCard({ data }: { data: HomeData }) {
       </>
     ),
     value: row.amountBani,
-    valueText: formatLei(row.amountBani),
+    valueText: formatAmount(row.amountBani),
     color: row.color,
     ...(previous.receiptCount === 0
       ? {}
@@ -40,7 +39,7 @@ export function CategoryCard({ data }: { data: HomeData }) {
           detail:
             row.previousBani === 0
               ? `Nimic în ${before}`
-              : `${before}: ${formatLei(row.previousBani)}`,
+              : `${before}: ${formatAmount(row.previousBani)}`,
         }),
   }));
 
@@ -59,7 +58,7 @@ export function CategoryCard({ data }: { data: HomeData }) {
               type="button"
               aria-expanded={showAll}
               onClick={() => setShowAll((open) => !open)}
-              className="mt-3 inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-teal-800 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 dark:text-teal-300 dark:hover:bg-slate-800"
+              className={`${buttonQuiet} mt-2`}
             >
               {showAll ? 'Arată mai puține' : `Arată toate categoriile (${regular.length})`}
             </button>
@@ -67,10 +66,7 @@ export function CategoryCard({ data }: { data: HomeData }) {
           <Adjustments adjustments={current.adjustments} totalBani={current.totalBani} />
         </>
       )}
-      <Link
-        to="/statistici"
-        className="mt-3 inline-flex min-h-10 items-center rounded-lg px-2 text-sm font-medium text-teal-800 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 dark:text-teal-300 dark:hover:bg-slate-800"
-      >
+      <Link to="/statistici" className={`${buttonQuiet} mt-2`}>
         Pe luni, categorii și magazine
       </Link>
     </section>

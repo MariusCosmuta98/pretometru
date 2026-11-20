@@ -1,9 +1,11 @@
 import type { PriceObservation } from '@/analytics';
 import { formatLei, formatMilliBani, toMilliBase, type BaseUnit, type PackUnit } from '@/domain';
+import { plural } from '@/ui/plural';
 
 /*
  * Romanian formatting shared by the Home and Statistics screens. Money goes through the `@/domain`
  * helpers (integer bani in, text out); percentages are ratios and the only floats on these screens.
+ * Counts and their nouns are `plural` of `@/ui/plural`.
  */
 
 const MONTH_NAMES = [
@@ -28,12 +30,6 @@ export function formatMonth(month: string): string {
   return name ? `${name} ${year}` : month;
 }
 
-/** `2026-11` -> `Noiembrie 2026`, for a heading. */
-export function formatMonthTitle(month: string): string {
-  const text = formatMonth(month);
-  return `${text.charAt(0).toLocaleUpperCase('ro')}${text.slice(1)}`;
-}
-
 /** `2026-11-07` (or `2026-11-07T18:31`) -> `07.11.2026`. */
 export function formatDay(date: string): string {
   const [year, month, day] = date.slice(0, 10).split('-');
@@ -48,20 +44,26 @@ export function formatPercent(pct: number): string {
   return `${sign}${Math.abs(pct).toFixed(1).replace('.', ',')}%`;
 }
 
-/** `+25,00 lei`, `−108,76 lei`, `0,00 lei`. */
+/** `+25,00 lei`, `−108,76 lei`, `0,00 lei`: a change, always with its sign. */
 export function formatSignedLei(bani: number): string {
   const sign = bani > 0 ? '+' : bani < 0 ? MINUS : '';
   return `${sign}${formatLei(Math.abs(bani))}`;
 }
 
-/**
- * `1 bon`, `2 bonuri`, `20 de bonuri`: Romanian puts "de" between a number of 20 or more (its last
- * two digits, 00 included) and the thing counted.
- */
-export function formatCount(count: number, one: string, many: string): string {
-  if (count === 1) return `1 ${one}`;
-  const lastTwo = Math.abs(count) % 100;
-  return `${count} ${lastTwo === 0 || lastTwo >= 20 ? 'de ' : ''}${many}`;
+/** `210,20 lei`, `−1,50 lei`: an amount that can be a deduction, with the typographic minus. */
+export function formatAmount(bani: number): string {
+  return bani < 0 ? formatSignedLei(bani) : formatLei(bani);
+}
+
+/** `ultimele 90 de zile`, `ultima zi`. */
+export function lastDays(days: number): string {
+  return days === 1 ? 'ultima zi' : `ultimele ${plural(days, 'zi', 'zile')}`;
+}
+
+/** `Un bon are data în viitor (decembrie 2026)`, `2 bonuri au data în viitor (...)`. */
+export function formatFutureReceipts(count: number, months: readonly string[]): string {
+  const who = count === 1 ? 'Un bon are' : `${plural(count, 'bon', 'bonuri')} au`;
+  return `${who} data în viitor (${months.map(formatMonth).join(', ')})`;
 }
 
 const UNIT_LABELS: Record<BaseUnit, string> = {
@@ -72,17 +74,12 @@ const UNIT_LABELS: Record<BaseUnit, string> = {
   m: 'm',
 };
 
-export const unitLabel = (unit: BaseUnit): string => UNIT_LABELS[unit];
+const unitLabel = (unit: BaseUnit): string => UNIT_LABELS[unit];
 
 /** Two decimals from one leu up, more for cheap pieces (`0,0332 lei/buc`). */
 function decimalsFor(milliBani: number): number {
   const size = Math.abs(milliBani);
   return size >= 100_000 ? 2 : size >= 10_000 ? 3 : 4;
-}
-
-/** `1,60 lei/rolă`. */
-export function formatUnitPrice(milliBani: number, unit: BaseUnit): string {
-  return `${formatMilliBani(milliBani, decimalsFor(milliBani))} lei/${unitLabel(unit)}`;
 }
 
 /** `1,45 → 1,60 lei/rolă`: both ends with the same number of decimals. */

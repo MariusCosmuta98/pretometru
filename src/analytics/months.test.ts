@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentMonth, isMonthKey, lastMonths, monthOf, monthRange, shiftMonth } from './months';
+import { currentMonth, lastMonths, monthOf, monthRange, monthSpan, shiftMonth } from './months';
 
 describe('monthOf', () => {
   it('is the month of the printed date, with or without a time', () => {
@@ -48,16 +48,18 @@ describe('shiftMonth and monthRange', () => {
     expect(() => shiftMonth('9999-12', 1)).toThrow(RangeError);
   });
 
-  it('lists every month of a range, both ends included', () => {
+  it('lists every month of a range, both ends included, and counts them', () => {
     expect(monthRange('2026-10', '2027-01')).toEqual(['2026-10', '2026-11', '2026-12', '2027-01']);
     expect(monthRange('2026-11', '2026-11')).toEqual(['2026-11']);
     expect(monthRange('2026-11', '2026-10')).toEqual([]);
+    expect(monthSpan('2026-10', '2027-01')).toBe(4);
+    expect(monthSpan('2026-11', '2026-11')).toBe(1);
+    expect(monthSpan('2026-11', '2026-10')).toBe(0);
   });
 
-  it('validates month keys', () => {
-    expect(isMonthKey('2026-11')).toBe(true);
-    expect(isMonthKey('2026-00')).toBe(false);
-    expect(isMonthKey('2026-11-07')).toBe(false);
+  it('refuses text that is not a month', () => {
+    expect(() => monthSpan('2026-00', '2026-11')).toThrow(RangeError);
+    expect(() => monthRange('2026-11-07', '2026-12')).toThrow(RangeError);
   });
 });
 
