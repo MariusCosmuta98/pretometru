@@ -123,7 +123,8 @@ describe('engines', () => {
     finish(EVERYTHING);
 
     expect(await screen.findByText(/poți citi PDF-uri și poze și fără internet/)).toBeTruthy();
-    expect(screen.getAllByText(/gata fără internet/)).toHaveLength(2);
+    // The engine list is read again after the download, so it can lag behind the message above.
+    await waitFor(() => expect(screen.getAllByText(/gata fără internet/)).toHaveLength(2));
     expect(screen.queryByRole('button', { name: /Descarcă acum/ })).toBeNull();
   });
 
