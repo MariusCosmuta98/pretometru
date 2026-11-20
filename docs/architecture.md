@@ -37,14 +37,14 @@ Owners are the todo ids from [plan §9](plan.md). "Shared" files take minimal, a
 | `src/import/pdf/`            | pdf.js adapter: `extractPdfText(ArrayBuffer)` -> `ReceiptSource`; the only importer of `pdfjs-dist`, worker bundled locally and loaded lazily | `parsers-pdf-text` (the rest of `src/import/` is `import-review-ui`) |
 | `src/catalog/`               | product matching (alias -> EAN -> fuzzy -> new), auto-categories, merge/split (§5a) | `catalog-matching`                    |
 | `src/analytics/`             | price observations, unit price, cheapest store, trends (§5b)         | `price-analytics`                     |
-| `src/lists/`                 | shopping lists: list and item storage, cheapest place per item, grouping by store | `shopping-lists`                      |
+| `src/lists/`                 | shopping lists: list and item storage, cheapest place per item, grouping by store (§5d) | `shopping-lists`                      |
 | `src/sync/`                  | GitHub sync: private data repo, one atomic commit per sync, last-write-wins + tombstones (§13) | `sync-github`                         |
 | `src/ai/`                    | optional Gemini extraction                                           | `ai-gemini-optional`                  |
 | `src/pwa/`                   | service worker registration, update prompt, offline/share-target     | `pwa-offline-share` (scaffold: `scaffold-pwa`) |
 | `src/features/home`, `stats` | dashboard and statistics screens                                     | `insights-dashboard` (until then `price-analytics`) |
 | `src/features/add-receipt`, `receipts` | add receipt (files, camera, pasted text, manual), receipt list, review (`bonuri/:receiptId`, §12) | `import-review-ui`                    |
 | `src/features/products`      | products by category, product page (§5c)                             | `catalog-matching`, `price-analytics` |
-| `src/features/lists`         | shopping lists: overview and list screens                            | `shopping-lists`                      |
+| `src/features/lists`         | shopping lists: overview and list screens (§5d); "Adaugă pe listă" lives on the product page (`src/features/products/AddToList.tsx`) | `shopping-lists`                      |
 | `src/features/sync`          | Settings section: GitHub onboarding, token, "Sincronizează acum", status (§13) | `sync-github`                         |
 | `src/features/settings`      | settings shell; sections are contributed by other features           | shell: `scaffold-pwa`; sections: their feature owners |
 | `src/app/`                   | app shell: router, layout, navigation, feature registry              | `scaffold-pwa` (shared)               |
@@ -317,6 +317,95 @@ comparison table, price chart, history, purchases that cannot be compared, merge
   paper, only `Date` is faked (`vi.useFakeTimers({ toFake: ['Date'] })`, IndexedDB needs real timers) and the chart module
   is mocked because jsdom has no canvas. `tests/price-comparison.test.ts` is the §7.7 acceptance test and
   `tests/catalog-analytics-fixtures.test.ts` runs the catalog and analytics over every fixture.
+
+## 5d. Shopping lists (`src/lists`, `src/features/lists`)
+
+`src/lists` (import from `@/lists`) is React-free: list and item storage, where each item is cheapest, and the plan
+grouped by store. The screens (`/liste`, `/liste/:listId`) and the product page's "Adaugă pe listă" are thin layers over
+it, which is why a feature never has to import another one.
+
+```ts
+import { addProductToList, addTextItem, createList, loadListView, setItemChecked } from '@/lists';
+
+const list = await createList(db, 'Săptămâna asta');
+await addProductToList(db, list.id, product.id); // { item, status: 'added' | 'already' | 'reopened' }
+await addTextItem(db, list.id, 'Pâine'); // free text: no product, so no price
+const view = await loadListView(db, list.id); // { list, plan: { items, groups, estimateBani, ... }, windowDays, excludeSales }
+```
+
+| Function                                                           | Purpose                                                                                      |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `createList`, `renameList`, `archiveList`, `restoreList`, `deleteList` | list CRUD. Names are tidied (trimmed, one space) and must not be empty (`RangeError`); archiving sets `archivedAt`; `deleteList` tombstones the list and its live items with the same instant |
+| `createListWithProduct(db, name, productId)`                       | a new list that starts with one product, in one transaction (the product page's "Listă nouă") |
+| `addProductToList(db, listId, productId)`                          | puts a catalog product last on a list under its name. One that is still to buy answers `already` and adds nothing; a checked one is unchecked and moved last (`reopened`) |
+| `addTextItem(db, listId, label)`                                   | a free-text item                                                                              |
+| `updateItem(db, id, { label?, qty?, unit?, note? })`               | a key that is present with `undefined` clears the field, an absent key leaves it alone; `qty` must satisfy `QtySchema` (positive, up to 3 decimals), `unit` is `buc`, `kg` or `l` |
+| `setItemChecked(db, id, checked)`                                  | `checkedAt` is the write's `updatedAt`; asking for the state the item is in writes nothing     |
+| `removeItem`, `uncheckAll`, `removeCheckedItems`                   | tombstone / "start again" / "what was bought"                                                  |
+| `moveItem(db, id, { before } \| { after })`                        | puts an item next to another one of the same list and numbers `order` 0, 1, 2... again; only the items whose position changed are written, so clashing or gappy numbers left by two devices heal |
+| `loadListsOverview(db)`, `listOpenLists(db)`                       | lists with their item and checked counts (in use, newest first / archived, latest first); the lists a product can be added to |
+| `loadListView(db, id, options?)`                                   | everything the list screen shows, in one read transaction; `options` (`now`, `days`, `excludeSales`) override the settings, for tests |
+| `quoteItem`, `estimateCost`, `planList`, `sortItems`               | the pure core of the above, on already loaded data                                             |
+
+All writes go through `createRecord`, `updateRecord` and `softDelete` (§5), inside one Dexie transaction where several
+records change, and take the optional `StorageContext` (`now`, `newId`) so tests are deterministic. Item `order` is a
+position in the list (new items get `max + 1`); the screens never show it.
+
+**Where an item is cheapest.** `loadListView` builds one `ProductPriceSummary` per linked product with `loadObservations`
+and `summarizeProduct` (§5b), the code of the product screens, and the same `priceWindowDays` and
+`excludeDiscountedPrices` settings; `quoteItem` turns it into an `ItemQuote`:
+
+| `kind`            | When                                                                                          | Store and price                                  |
+| ----------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `only-at`         | every purchase ever, in any unit, was at one store: nothing to compare (plan §7.6)             | that store, at the last purchase (whatever its age) |
+| `cheapest`        | the cheapest store of the window                                                               | that store, at its best purchase in the window   |
+| `no-recent-price` | bought, but nothing to compare in the window (too old, or only sale prices with sales left out) | none; `last` is the most recent purchase, for reference |
+| `incomparable`    | bought, but never in a size that can be compared (no pack size)                               | none                                             |
+| `never-bought`    | a catalog product without a purchase                                                           | none                                             |
+| `unlinked`        | free text, or a product that is gone                                                           | none                                             |
+
+A store quote carries the purchase it comes from (`price`: date, price per base unit, `onSale`, pack), the base unit and
+the estimate. **Estimates** (`estimateCost`) are whole bani, in integer arithmetic. No quantity means one, no unit means
+the unit the price was paid in. kg or l for a product compared per kg or l is `qty x price per base unit` (milli-bani,
+whatever size the purchase was); `buc` for a purchase counted in pieces is `qty x paidUnitBani`, the pack as that store
+sells it (two `buc` of toilet paper are two packs, not two rolls). Any other combination has no estimate: the item keeps
+its store and counts as `unestimated`.
+
+**The plan** (`planList`): `items` are the items still to buy and then the checked ones, each part in list order;
+`groups` is the same items under their store, stores by name (Romanian collation) and the group without a store last,
+with a subtotal per group (checked items included: the number does not move while shopping) and `estimateBani`,
+`unestimated`, `checked` for the whole list.
+
+**Screens** (`src/features/lists`, Romanian, mobile first, `@/ui/controls` classes):
+
+- `/liste`: create (then the new list opens), rename inline, archive and restore (archived lists sit in a collapsed
+  section), delete after an inline question that names the number of items. What happened is said in a `role="status"`
+  line, and focus goes to the "Liste active" heading when a card leaves its place.
+- `/liste/:listId`: the add form (type to get catalog suggestions from `searchProducts`; Enter adds the text as typed
+  unless it is exactly the name of a catalog product, so a typed "Lapte UHT" still gets its prices), the comparison
+  settings in force with the period and the sale filter (the same two settings as the product screens, collapsed to one
+  line), "Pe magazine" / "Listă simplă", and the items. A row is a checkbox with the name, the quantity, where it is
+  cheapest (store, price per base unit with the shelf price of the pack, the day it was paid, a "reducere" mark, or "Doar
+  la X"), why there is no store, and its estimate. "Editează" opens the editor in place: quantity, unit, note (and the
+  name of a free-text item), "Mută mai sus" / "Mută mai jos" among the neighbours of the same store and checked state,
+  "Șterge articolul". "Debifează tot" and "Șterge bifatele" (after a question) sit under the list.
+- **Data**: `useLive.ts` is the product screens' hook (a Dexie `liveQuery` with an `async` querier, see §5c), copied
+  because features may not import each other. The list follows its own edits, new receipts and the two settings.
+- **Accessibility**: every field is a `<label for>`; buttons name their item (`Editează Lapte UHT`, `Șterge lista
+  „Petrecere”`); the editor is a form named after the item; focus moves into the editor and the rename form, returns to
+  the button that opened them on Escape or save, stays on the move button after a move (or goes to the other one at the
+  end of the list), and goes to the add field after an item was removed; destructive questions put focus on "Anulează".
+- **Product page**: `src/features/products/AddToList.tsx` offers "Adaugă pe listă": the lists in use (the newest is
+  preselected) or a new one, then a link to the list.
+- **Offline**: IndexedDB only; the two screen chunks are in the precache, and the list screen was checked in the built
+  app with the network off.
+
+**Tests.** `src/lists/*.test.ts` run against fake-indexeddb (CRUD, checking, ordering, tombstones) and on hand-made
+observations (quotes, estimates, plan). `src/lists/testing.ts` saves the ground-truth METRO, Kaufland and Mega Image
+receipts through `saveReceipt` and `tests/shopping-lists.test.ts` is the acceptance test: toilet paper is cheapest at
+METRO (1,30 lei per roll, a sale price), wipes too (3,98 lei a pack), the chicken was only bought at Kaufland ("Doar la
+Kaufland", 500 g = 12,49 lei), coffee and bread have no store, METRO leaves the list with the default 90-day window and
+with sale prices excluded. The screens have jsdom tests like the product screens (§5c); the clock is the fixtures' 20.11.2026.
 
 ## 6. Build, PWA and CSP
 
