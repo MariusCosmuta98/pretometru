@@ -11,6 +11,7 @@ describe('settings registry', () => {
   it('only exports settings that were explicitly marked portable (secrets stay on the device)', () => {
     expect(isPortableSetting('priceWindowDays')).toBe(true);
     expect(isPortableSetting('geminiApiKey')).toBe(false);
+    expect(isPortableSetting('lastExportAt')).toBe(false);
     expect(isPortableSetting('anything-else')).toBe(false);
   });
 

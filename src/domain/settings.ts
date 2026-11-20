@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { InstantSchema } from './common';
 
 interface SettingDefinition<S extends z.ZodType> {
   schema: S;
@@ -20,6 +21,8 @@ export const SETTING_DEFINITIONS = {
   priceWindowDays: define({ schema: z.int().min(1).max(3650), default: 90, portable: true }),
   /** Plan §7.4: discounted prices are marked and can be left out of comparisons. */
   excludeDiscountedPrices: define({ schema: z.boolean(), default: false, portable: true }),
+  /** When this device last exported a backup file: a fact about this device, so it never leaves it. */
+  lastExportAt: define({ schema: InstantSchema.nullable(), default: null, portable: false }),
 };
 
 export type SettingKey = keyof typeof SETTING_DEFINITIONS;
