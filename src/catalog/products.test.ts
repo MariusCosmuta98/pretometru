@@ -126,4 +126,9 @@ describe('searchProducts', () => {
     const { db } = await catalog();
     expect(await searchProducts(db, 'xyz')).toEqual([]);
   });
+
+  it('falls back to similar words when nothing contains the query, e.g. a typo', async () => {
+    const { db, cream } = await catalog();
+    expect((await searchProducts(db, 'smantna'))[0]).toEqual(cream);
+  });
 });

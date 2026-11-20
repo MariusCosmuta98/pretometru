@@ -199,27 +199,44 @@ await rememberMappings(db, parsedReceipt.chain, [{ rawName, ean, productId, pack
 | Function                                          | Purpose                                                                                      |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `suggestMappings(db, receipt)`                    | `LineMapping[]`: `{ productId?, categoryId?, pack?, via, candidates }` for every line         |
-| `searchProducts(db, query, limit = 20)`           | type-ahead by name, brand or EAN prefix (diacritics, case and punctuation never matter)       |
+| `searchProducts(db, query, limit = 20)`           | type-ahead by name, brand or EAN prefix (diacritics, case and punctuation never matter); similar words (typos) follow |
 | `createProduct(db, input)`                        | new product; refuses an empty name, an unknown category and the system Non-produs category    |
 | `rememberMappings(db, chain, choices)`            | upserts one alias per chain + normalised name (with EAN and `defaultPack`); all or nothing    |
+| `setAliasDefaultPack(db, aliasId, pack \| undefined)` | sets or clears the size an alias assumes, and re-derives the stored lines that used the old one |
+| `mergeProducts(db, intoId, fromIds)`              | folds duplicates into one: lines, aliases and list items move, the duplicates become tombstones, their EAN survives as an EAN-only alias |
+| `splitProduct(db, sourceId, { lineIds, target })` | moves chosen purchases to an existing or new product; an alias follows only when all its lines move |
 | `categoryForHint(header)`                         | seed category for a printed section header ("Mopro/Brânză/Ouă" -> Lactate & ouă) or `undefined` |
 
 How a line is matched, in this order (`via` names the first step that applied):
 
 1. **alias**: the newest live alias of `(receipt.chain, normalizeName(rawName))`, else one without a chain. An alias of
-   another chain is deliberately not used: the same printed name can be a different product elsewhere.
+   another chain is deliberately not assigned: the same printed name can be a different product elsewhere (its product
+   is still offered as a candidate, step 3).
 2. **ean**: the product, or the alias rows, that carry the code (UPC-A and EAN-13 spellings compare equal). Assigned only
    when the code has at least 8 digits (shorter ones are truncated prints) and exactly one product claims it;
    otherwise the products only become candidates.
-3. **fuzzy**: likely products in `candidates`, best first, `score` 0..1 (higher is better). Never assigned. (Until the
-   fuzzy matcher lands, only an ambiguous or truncated EAN produces candidates.)
-4. **category-hint**: the line's `storeCategoryHint` mapped onto a live seed category (`categoryId`, no product).
+3. **fuzzy**: likely products in `candidates` (at most 5), best first, `score` 0..1 (higher is better, never 1). Never
+   assigned. The line's words are looked up in a fuse.js index of the catalog's words (typos and truncated words such
+   as "SMANT" are fine; numbers and sizes must match exactly), and every spelling of a product (its name and the aliases
+   pointing at it) is scored on how much of it the line contains and how much of the line it explains.
+4. **category-hint**: the line's `storeCategoryHint` mapped onto a live seed category (`categoryId`, no product). The
+   category is also filled when step 3 found candidates (`via` stays `fuzzy`).
 5. **none**.
 
 Only `alias` and `ean` set `productId` (with the product's `categoryId`; the product is also `candidates[0]`, score 1):
 a wrong silent merge is worse than a missing one. `pack` is set only when an alias remembers a size that the printed
 name lacks and the line is sold by the piece; a size printed on the receipt always wins. Non-product lines get the
 Non-produs category and are never matched.
+
+**Pack sizes and stored lines.** When an alias's `defaultPack` is set, changed or cleared (`rememberMappings` with a
+`pack`, or `setAliasDefaultPack`), the stored lines of that alias (same product, same normalised name, same chain, sold by
+the piece) that have no size or still carry the old default get the new one through `updateRecord(db.lines, ...)`, which
+re-derives their unit prices. Lines with a size of their own are never touched. This is how Mega's unsized "HARTIE
+IGIENICA" becomes 2,00 lei per roll once the alias knows it is 8 rolls.
+
+**Merge and split keep one rule: a printed name has one product.** `mergeProducts` and `splitProduct` set the moved
+lines' `categoryId` to the target's category (a line with a product takes the product's category) and move the
+aliases with them, so the next import of the same printed name follows the user's decision.
 
 ## 6. Build, PWA and CSP
 

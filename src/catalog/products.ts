@@ -7,6 +7,7 @@ import {
   type StorageContext,
 } from '@/storage';
 import { rankProducts } from './product-search';
+import { createFuzzyMatcher } from './fuzzy';
 import type { NewProductInput } from './types';
 
 const tidy = (text: string) => text.trim().replace(/\s+/g, ' ');
@@ -43,11 +44,24 @@ export async function createProduct(
   });
 }
 
-/** Type-ahead search over live products by name, brand or EAN; see `rankProducts` for the order. */
+/**
+ * Type-ahead search over live products by name, brand or EAN (see `rankProducts` for the order);
+ * when that finds little, products with similar words (typos, truncated words) follow.
+ */
 export async function searchProducts(
   db: PretometruDB,
   query: string,
   limit = 20,
 ): Promise<Product[]> {
-  return rankProducts(await listActive(db.products), query).slice(0, Math.max(0, limit));
+  const products = await listActive(db.products);
+  const found = rankProducts(products, query);
+  if (found.length < limit) {
+    const seen = new Set(found.map((product) => product.id));
+    const similar = createFuzzyMatcher(products, [])
+      .candidates(query, limit)
+      .map((candidate) => candidate.product)
+      .filter((product) => !seen.has(product.id));
+    found.push(...similar);
+  }
+  return found.slice(0, Math.max(0, limit));
 }

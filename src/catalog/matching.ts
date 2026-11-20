@@ -15,6 +15,19 @@ import type { LineMapping, MappingCandidate, PackChoice } from './types';
 
 /** An EAN that is truncated or claimed by several products: a strong hint, but a human decides. */
 const AMBIGUOUS_EAN_SCORE = 0.9;
+const MAX_CANDIDATES = 5;
+
+/** The best score per product, best first. */
+function mergeCandidates(...lists: MappingCandidate[][]): MappingCandidate[] {
+  const best = new Map<string, MappingCandidate>();
+  for (const candidate of lists.flat()) {
+    const known = best.get(candidate.product.id);
+    if (!known || candidate.score > known.score) best.set(candidate.product.id, candidate);
+  }
+  return [...best.values()]
+    .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name, 'ro'))
+    .slice(0, MAX_CANDIDATES);
+}
 
 /** The alias size fills in only what the printed name left out, and only for sold units (`buc`). */
 function completingPack(line: ParsedLine, defaultPack: PackChoice | undefined) {
@@ -48,16 +61,17 @@ function mapLine(line: ParsedLine, chain: Chain, index: CatalogIndex): LineMappi
   const aliased = alias && index.product(alias.productId);
   if (aliased) return assigned('alias', aliased, completingPack(line, alias.defaultPack), index);
 
-  let candidates: MappingCandidate[] = [];
+  let eanCandidates: MappingCandidate[] = [];
   if (line.ean !== undefined) {
     const { products, defaultPack } = index.lookupEan(line.ean);
     const [only] = products;
     if (only && products.length === 1 && isIdentifyingEan(line.ean)) {
       return assigned('ean', only, completingPack(line, defaultPack), index);
     }
-    candidates = products.map((product) => ({ product, score: AMBIGUOUS_EAN_SCORE }));
+    eanCandidates = products.map((product) => ({ product, score: AMBIGUOUS_EAN_SCORE }));
   }
 
+  const candidates = mergeCandidates(eanCandidates, index.candidates(line.rawName));
   const hinted = line.storeCategoryHint ? categoryForHint(line.storeCategoryHint) : undefined;
   const categoryId = hinted !== undefined && index.hasCategory(hinted) ? hinted : undefined;
   const via = candidates.length > 0 ? 'fuzzy' : categoryId !== undefined ? 'category-hint' : 'none';

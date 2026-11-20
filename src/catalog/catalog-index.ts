@@ -1,6 +1,7 @@
 import type { Alias, Category, Chain, Product } from '@/domain';
 import { listActive, type PretometruDB } from '@/storage';
 import { normalizeEan } from './ean';
+import { createFuzzyMatcher, type FuzzyMatcher } from './fuzzy';
 
 /** Everything the matcher reads, loaded once per receipt (a household catalog is small). */
 export interface CatalogSnapshot {
@@ -30,6 +31,8 @@ export interface CatalogIndex {
   /** The newest alias of a normalised printed name: the chain's own, else one valid for every chain. */
   aliasForName(chain: Chain, normName: string): Alias | undefined;
   lookupEan(ean: string): EanLookup;
+  /** Likely products for a printed name, best first (built on first use). */
+  candidates: FuzzyMatcher['candidates'];
 }
 
 const nameKey = (chain: Chain | undefined, normName: string) => `${chain ?? ''}\u0000${normName}`;
@@ -71,11 +74,15 @@ export function createCatalogIndex({
     if (product.ean !== undefined) push(productsByEan, normalizeEan(product.ean), product);
   }
 
+  let matcher: FuzzyMatcher | undefined;
+
   return {
     product: (id) => productById.get(id),
     hasCategory: (id) => categoryIds.has(id),
     aliasForName: (chain, normName) =>
       aliasByName.get(nameKey(chain, normName)) ?? aliasByName.get(nameKey(undefined, normName)),
+    candidates: (rawName, limit) =>
+      (matcher ??= createFuzzyMatcher(products, aliases)).candidates(rawName, limit),
     lookupEan(ean) {
       const key = normalizeEan(ean);
       const rows = (aliasesByEan.get(key) ?? []).toSorted((a, b) => (isNewer(a, b) ? -1 : 1));

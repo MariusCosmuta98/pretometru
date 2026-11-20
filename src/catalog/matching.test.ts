@@ -54,7 +54,7 @@ describe('suggestMappings', () => {
       });
     });
 
-    it('does not carry a chain-specific alias over to another chain', async () => {
+    it("does not assign another chain's alias, but offers its product as a candidate", async () => {
       const { db, milk } = await setup();
       await rememberMappings(db, 'kaufland', [{ rawName: 'LAPTE UHT 1L', productId: milk.id }]);
 
@@ -62,7 +62,9 @@ describe('suggestMappings', () => {
         db,
         parsedReceipt('lidl', [{ rawName: 'LAPTE UHT 1L' }]),
       );
-      expect(mapping).toEqual({ via: 'none', candidates: [] });
+      expect(mapping?.productId).toBeUndefined();
+      expect(mapping?.via).toBe('fuzzy');
+      expect(mapping?.candidates.map((c) => c.product.id)).toEqual([milk.id]);
     });
 
     it('applies an alias without a chain to every chain, but prefers the chain-specific one', async () => {
@@ -198,6 +200,32 @@ describe('suggestMappings', () => {
       );
       expect(mapping?.productId).toBeUndefined();
       expect(mapping?.candidates.map((c) => c.product.id)).toEqual([product.id]);
+    });
+  });
+
+  describe('fuzzy', () => {
+    it('only offers similar products: nothing is assigned without a human', async () => {
+      const { db, milk } = await setup();
+      const [mapping] = await suggestMappings(
+        db,
+        parsedReceipt('lidl', [{ rawName: 'LAPTE UHT 1.5% 1L' }]),
+      );
+      expect(mapping?.via).toBe('fuzzy');
+      expect(mapping?.productId).toBeUndefined();
+      expect(mapping?.candidates.map((c) => c.product.id)).toEqual([milk.id]);
+      expect(mapping?.candidates[0]?.score).toBeLessThan(1);
+    });
+
+    it('keeps the header category next to the candidates', async () => {
+      const { db, milk } = await setup();
+      const [mapping] = await suggestMappings(
+        db,
+        parsedReceipt('kaufland', [
+          { rawName: 'LAPTE UHT 1.5%', storeCategoryHint: 'Mopro/Brânză/Ouă' },
+        ]),
+      );
+      expect(mapping).toMatchObject({ via: 'fuzzy', categoryId: DAIRY });
+      expect(mapping?.candidates[0]?.product.id).toBe(milk.id);
     });
   });
 

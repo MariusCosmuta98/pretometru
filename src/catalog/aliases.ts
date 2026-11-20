@@ -8,7 +8,8 @@ import {
   type StorageContext,
 } from '@/storage';
 import { clonePack, samePack } from './packs';
-import type { MappingChoice } from './types';
+import { applyDefaultPack } from './line-packs';
+import type { MappingChoice, PackChoice } from './types';
 
 async function rememberOne(
   db: PretometruDB,
@@ -32,7 +33,7 @@ async function rememberOne(
   ).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
 
   if (!existing) {
-    await createRecord(
+    const created = await createRecord(
       db.aliases,
       {
         chain,
@@ -44,6 +45,7 @@ async function rememberOne(
       },
       context,
     );
+    if (created.defaultPack) await applyDefaultPack(db, created, undefined, context);
     return;
   }
 
@@ -55,13 +57,19 @@ async function rememberOne(
   if (choice.pack !== undefined && !samePack(existing.defaultPack, choice.pack)) {
     patch.defaultPack = clonePack(choice.pack);
   }
-  if (Object.keys(patch).length > 0) await updateRecord(db.aliases, existing.id, patch, context);
+  if (Object.keys(patch).length === 0) return;
+  const updated = await updateRecord(db.aliases, existing.id, patch, context);
+  if (updated && patch.defaultPack) {
+    await applyDefaultPack(db, updated, existing.defaultPack, context);
+  }
 }
 
 /**
  * Remembers confirmed matches so the next import is automatic: one alias per chain and normalised
  * printed name, carrying the EAN and the pack size when the choice has them. A name that was
- * already known is re-pointed at the chosen product (the user changed their mind). All or nothing.
+ * already known is re-pointed at the chosen product (the user changed their mind). When a pack
+ * size is new or changed, the stored lines of that alias are re-derived (see `applyDefaultPack`).
+ * All or nothing.
  */
 export async function rememberMappings(
   db: PretometruDB,
@@ -70,7 +78,36 @@ export async function rememberMappings(
   context?: StorageContext,
 ): Promise<void> {
   if (choices.length === 0) return;
-  await db.transaction('rw', [db.aliases, db.products], async () => {
-    for (const choice of choices) await rememberOne(db, chain, choice, context);
+  await db.transaction(
+    'rw',
+    [db.aliases, db.products, db.lines, db.receipts, db.stores],
+    async () => {
+      for (const choice of choices) await rememberOne(db, chain, choice, context);
+    },
+  );
+}
+
+/**
+ * Sets (or, with `undefined`, clears) the pack size an alias assumes when the printed name has
+ * none, and re-derives the unit prices of the stored lines that used the old size. Returns the
+ * updated alias, or `undefined` when it does not exist.
+ */
+export async function setAliasDefaultPack(
+  db: PretometruDB,
+  aliasId: string,
+  pack: PackChoice | undefined,
+  context?: StorageContext,
+): Promise<Alias | undefined> {
+  return db.transaction('rw', [db.aliases, db.lines, db.receipts, db.stores], async () => {
+    const current = await getActive(db.aliases, aliasId);
+    if (!current || samePack(current.defaultPack, pack)) return current;
+    const updated = await updateRecord(
+      db.aliases,
+      aliasId,
+      { defaultPack: pack ? clonePack(pack) : undefined },
+      context,
+    );
+    if (updated) await applyDefaultPack(db, updated, current.defaultPack, context);
+    return updated;
   });
 }
