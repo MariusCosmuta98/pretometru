@@ -5,7 +5,8 @@ le grupează pe categorii și îți arată unde ai cumpărat mai ieftin, cum evo
 pe lista de cumpărături.
 
 - Aplicație web statică (PWA) pe GitHub Pages — fără server, fără costuri.
-- Datele tale rămân în browser; sincronizarea între dispozitive este opțională, printr-un repo GitHub **privat** al tău.
+- Datele tale rămân în browser. Două funcții opționale, oprite până le pornești tu, pot trimite date în afară:
+  sincronizarea între dispozitive, printr-un repo GitHub **privat** al tău, și citirea cu AI (Gemini).
 - Acest repo este public și **nu conține bonuri reale** sau date personale.
 
 Planul și deciziile: [`docs/plan.md`](docs/plan.md) · Contracte de date: [`docs/contracts.md`](docs/contracts.md) ·
@@ -13,7 +14,12 @@ Arhitectură și structura codului: [`docs/architecture.md`](docs/architecture.m
 
 Aplicația este live la <https://mariuscosmuta98.github.io/pretometru/>.
 
-> Stadiu: în construcție (faza A, fundația). Ecranele sunt deocamdată substituenți.
+> Stadiu: versiunea 1 este implementată (import de bonuri din PDF, poză, text lipit sau manual, verificare înainte de
+> salvare, produse și prețuri, liste de cumpărături, statistici, funcționare offline, copie de siguranță; sincronizarea
+> GitHub și citirea cu Gemini sunt opționale). Formate de bon recunoscute: Kaufland și METRO (PDF), Lidl (captură de
+> ecran) și Mega Image (poză); alte magazine nu au încă parser dedicat. Testele automate (Vitest și Playwright, într-un
+> Chromium mobil emulat) folosesc GitHub și Gemini simulate: nu acoperă dispozitive reale, un token GitHub real sau o
+> cheie Gemini reală (vezi secțiunile „Cum verifici manual” de mai jos).
 
 ## Sincronizare și backup cu GitHub (opțional)
 
@@ -44,7 +50,8 @@ secunde după ce modifici date); o poți opri sau poți apăsa oricând *Sincron
 - Aplicația **refuză** un depozit public: bonurile tale nu ajung niciodată într-un depozit public.
 - Tokenul este păstrat doar în acest browser (IndexedDB), niciodată în exporturi, în backup-uri sau în depozit. Dacă
   l-ai pierdut sau crezi că l-a văzut altcineva, revocă-l pe GitHub și creează altul.
-- Aplicația se conectează doar la `api.github.com`.
+- Sincronizarea se conectează doar la `api.github.com` (citirea opțională cu Gemini, descrisă mai jos, folosește alt
+  serviciu).
 - *Deconectează* scoate tokenul de pe dispozitiv; datele rămân și local, și în GitHub.
 - Nu edita manual fișierele din `data/`. Dacă un fișier devine ilizibil, aplicația nu modifică nimic și îți spune care
   este.
@@ -64,10 +71,14 @@ te bazezi pe sincronizare, parcurge:
    „conține deja date”, iar după *Conectează și îmbină datele* vezi aceleași bonuri.
 4. **Modificări**: schimbă numele unui produs pe un dispozitiv, sincronizează, apoi sincronizează pe celălalt. Șterge
    un bon și verifică să dispară și pe celălalt. Un *Sincronizează acum* fără modificări nu face niciun commit.
-5. **Rețea și CORS**: în DevTools → Network, toate cererile merg la `api.github.com` și răspund fără erori CORS (mai ales
-   `POST`, `PATCH` și `PUT` cu antetul `Authorization`).
-6. **Cazuri de eroare**:
-   - fă depozitul public pentru un moment: aplicația refuză („Depozitul este public”) și nu apare niciun commit nou;
+5. **Rețea și CORS**: în DevTools → Network, cererile făcute de sincronizare merg doar la `api.github.com` și răspund
+   fără erori CORS (mai ales `POST`, `PATCH` și `PUT` cu antetul `Authorization`).
+6. **Cazuri de eroare**: doar cu un depozit și un token **de test**, într-un profil de browser nou, fără bonurile tale
+   (niciodată cu `pretometru-data`):
+   - depozit public: **nu** face public depozitul cu datele tale, nici „pentru un moment” (istoricul Git ar deveni
+     vizibil oricui încă dinainte ca aplicația să refuze). Refuzul („Depozitul este public”, fără niciun commit nou) îl
+     verifică deja testele automate cu GitHub simulat, inclusiv pentru un depozit devenit public după conectare; dacă
+     vrei să-l vezi și pe GitHub real, folosește în profilul de test un depozit public gol, creat doar pentru asta;
    - revocă tokenul: „GitHub nu acceptă tokenul”, iar sincronizarea automată se oprește până la o sincronizare manuală
      reușită;
    - un token cu *Contents: Read-only*: „Tokenul nu are voie să scrie în depozit”;
