@@ -409,6 +409,8 @@ const receipt = parseReceipt(source, { now: new Date() }); // best parser + vali
 | `check*`, `sumOfLines`, `expectedLineTotal`, `*_TOLERANCE_BANI` | the individual checks and their tolerances, exported for reuse (OCR digit repair) |
 | `engineForSource(source)`               | `meta.engine` of a source kind: `pdf-text` -> `pdfjs`, `ocr-text` -> `tesseract`, `pasted-text` -> `paste` |
 | `parsers`, `rankParsers`, `parseReceiptWith(parsers, source, opts)` | the registry, and `parseReceipt` over an explicit parser set (tests) |
+| `pdfRows(source)`                       | `pdf-text` source -> `PdfRow[]` (`{ page, y, cells, text }`): items on one baseline form a row, cells are the text runs separated by gaps; spaces come from the geometry. Pure, for the PDF parsers (`@/parsers/pdf-rows`) |
+| `lineKindOf`, `parseQuantity`, `toPurchasedAt`, `emptyReceipt` | shared helpers for parser authors: `deposit`/`bag`/`discount`/`product` by name and sign, `0,920` -> `0.92`, `07.11.26 18:31:47` -> `2026-11-07T18:31:47`, a receipt with nothing extracted (`@/parsers/line-kind`, `/text`, `/source`) |
 
 **Adding a parser**: create `src/parsers/<id>/index.ts` that default-exports a `ReceiptParser`
 (`{ id, version, detect, parse }`). `src/parsers/registry.ts` discovers it with `import.meta.glob`, so no shared file
@@ -421,8 +423,29 @@ changes; a test fails on duplicate ids or a version that is not semver.
   when the output for the same input changes.
 - Report problems as `warnings`, never by throwing. Leave the arithmetic checks to `validateReceipt`; a total that cannot
   be found is `grandTotalBani: 0` (see the warning notes in `contracts.md`). Warning messages are Romanian.
-- Tests: a golden test per `tests/fixtures/<store>/` plus small synthetic cases next to the parser. `makeParsedReceipt()`
-  and `makeParsedLine()` (`@/parsers/testing`, test-only) build valid receipts.
+- Tests: a golden test per `tests/fixtures/<store>/` (`expect(normalizeForGolden(parseReceipt(source, { now }))).toEqual(
+  normalizeForGolden(expected))`) plus small synthetic cases next to the parser. `makeParsedReceipt()` and
+  `makeParsedLine()` build valid receipts; `pdfFromText(lines)` / `pdfPagesFromText(pages)` build a `pdf-text` source
+  from monospaced text art (runs separated by two or more spaces become items, the column gives `x`). All are in
+  `@/parsers/testing` and test-only.
+
+### PDF text (`src/import/pdf`, import from `@/import/pdf`)
+
+```ts
+import { extractPdfText } from '@/import/pdf';
+
+const source = await extractPdfText(await file.arrayBuffer()); // { kind: 'pdf-text', pages: [{ width, height, items }] }
+```
+
+The only importer of `pdfjs-dist`. It loads pdf.js with a dynamic `import()`, so Vite puts it in a chunk of its own
+(about 440 KB, plus the 1.3 MB worker asset) that is fetched when the first PDF is read, never with the app shell. The
+worker is `pdfjs-dist/build/pdf.worker.min.mjs?url`: a build asset on the app's own origin, which the CSP allows
+(`worker-src 'self'`); nothing comes from a CDN. Items are `{ str, x: transform[4], y: transform[5], w: width, h: height }`
+in pdf.js order, empty strings dropped and whitespace-only items kept (their gap is information), exactly the shape of
+`tests/fixtures/**/source.pdf-text.json`. The call rejects for a file that is not a readable PDF (corrupt,
+password-protected); a scanned PDF resolves with pages that have no items, so the caller can fall back to OCR. The
+caller's buffer is copied first (pdf.js would take ownership of it). The worker is a `.mjs` asset, which the Workbox
+precache glob does not match: `pwa-offline-share` has to add it for PDF import to work offline.
 
 ## 11. OCR (`src/ocr`, import from `@/ocr`)
 

@@ -94,8 +94,8 @@ interface ParseWarning { code: WarningCode; message: string; lineIdx?: number }
 
 Warnings: `code` is the stable identifier, `message` a short **Romanian** sentence for the review screen, `lineIdx` the
 `idx` of the line it is about. `validateReceipt` (`src/parsers/validate.ts`) raises `SUM_MISMATCH` (Σ lines vs
-`grandTotalBani` beyond 5 bani, also `paidBani` vs `grandTotalBani - voucherBani`), `LINE_ARITHMETIC` (1 ban, plus half a
-ban per sold unit because the unit price is rounded; only lines that print `unitPriceBani`), `VAT_MISMATCH` (printed
+`grandTotalBani` beyond 5 bani, also `paidBani` vs `grandTotalBani - voucherBani`), `LINE_ARITHMETIC` (beyond 1 ban;
+only lines that print `unitPriceBani`), `VAT_MISMATCH` (printed
 `totals.vat` against itself and against the lines of each rate: 5 bani on a rate's gross, 2 on derived VAT amounts),
 `FUTURE_DATE`, `MISSING_DATE` and `MISSING_TOTAL`; the import orchestrator adds `DUPLICATE` (it needs the database).
 `grandTotalBani` is required, so **a parser that cannot find the total writes 0**: a 0 total over lines worth money, or
@@ -125,13 +125,27 @@ interface ReceiptParser {
 
 ## Per-store notes (verified on real samples)
 
-- **Kaufland** (PDF with text): section headers (`Alimente`, `Mopro/Brânză/Ouă`, …) -> `storeCategoryHint`;
-  `n * price` lines for multiples; weighed items print `0,920 KG` + line total only (price/kg = total/weight);
-  `GARANTIE AMBALAJ` -> `deposit`, `PUNGA BIO` -> `bag`; `Tichet de ambalaje` -> `totals.voucherBani`; VAT classes B=21, C=11, D=0.
-- **METRO** (invoice PDF): prices on the invoice are **ex-VAT**. Use "Valoare totala cu TVA" for `lineTotalBani`;
-  discounts are printed as `2,49-` (ex-VAT); first column is the EAN; "Unit. vanz." = consumer units per sold pack
-  (cross-check for `pack`, e.g. 8 rolls). Σ lines can differ by 1 ban from the printed total (rounding per VAT rate).
-  Name may contain a stray unit token (`... CAPSUNI BUC` + packaging code `BU`).
+- **Kaufland** (PDF with text, `src/parsers/kaufland`): section headers (`Alimente`, `Mopro/Brânză/Ouă`, …) -> `storeCategoryHint`;
+  `n * price` lines for multiples (`unitPriceBani` = the printed price); weighed items print `0,920 KG` + line total only
+  (no `unitPriceBani`: price/kg = total/weight is derived later by `unitPricing`); an item is its name, an optional
+  detail and the amount + VAT class, on one printed row or on two. `GARANTIE AMBALAJ` -> `deposit`, `PUNGA BIO` -> `bag`;
+  `Tichet de ambalaje` -> `totals.voucherBani`; `paidBani` = the `Plată card` row (else total - voucher, else absent).
+  VAT classes (B=21, C=11, D=0 at the time of writing) are read from the printed `TVA % | Brut | Net | Tva` table into
+  `totals.vat` and `vatRate`; without the table `vatRate` stays absent (no default mapping). The receipt number, the
+  time (`Data: dd.mm.yy Timp: hh:mm:ss Bon: n`) and `branch.code` (`Magazin: n`) are in the footer; `branch.city`
+  comes from the card slip's merchant block when it is there. Card slip, loyalty card and buyer rows are never read.
+- **METRO** (invoice PDF, `src/parsers/metro`): prices on the invoice are **ex-VAT**. Use "Valoare totala cu TVA" for
+  `lineTotalBani`; the VAT-inclusive list price is not printed, so there is no `unitPriceBani`, and the ex-VAT discount
+  (`2,49-`) becomes `discountBani = round(discount * (1 + rate / 100))`. Columns are anchored from the right (8
+  numbers, 9 with a discount); the first column is the EAN (kept as printed: a truncated one stays truncated, a code
+  shorter than 4 digits is dropped); the description (size, brand, name) is `rawName` as printed, including a stray
+  unit token (`... CAPSUNI BUC`), while the two-letter packaging code (`BU`) is not part of it. "Unit. vanz." = consumer
+  units per sold pack: it only cross-checks a counted size in the name (`8 ROLE` vs 8, else a `LOW_CONFIDENCE`
+  warning); `pack` comes from the name. The invoice's own columns are cross-checked too (value = price x qty, value
+  after discount, total with VAT), raising `LINE_ARITHMETIC` for a line that does not add up. Σ lines can differ by 1
+  ban from the printed total (rounding per VAT rate). `grandTotalBani` is the invoice gross, `paidBani` the "Total de
+  plata" row, `totals.vat` the table under "Total factura". `purchasedAt` is "Data Vanzare", `storeName` the seller as
+  printed, `branch.city` the city of "METRO Cash&Carry <city>". Seller, bank, buyer and client-number rows are never read.
 - **Lidl** (app screenshot, OCR): two-line items `qty BUC x price` then `name total VATclass`; classes A=21, B=11;
   split card payments (several `CARD` lines). OCR confuses 0/8 and similar; arithmetic checks catch it.
 - **Mega Image** (photo, OCR): `name price` then the EAN on the next line; no store name on the receipt
